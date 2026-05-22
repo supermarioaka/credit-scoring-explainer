@@ -87,28 +87,44 @@ def evaluate_application(model, applicant_data):
     }
 
     result = {
+        # Backward-compatible fields used by app.py
         "probability_of_default": clean_number(probability),
         "linear_score": clean_number(linear_score),
-        # Official bank decision
         "policy_decision": policy_decision,
-        # Policy sensitivity analysis
         "policy_scenarios": policy_scenarios,
-        # Argumentation layer
         "argumentation_risk_signal": argumentation_risk_signal,
         "review_recommendation": review_recommendation,
-        # Arguments
         "approve_arguments": approve_arguments,
         "reject_arguments": reject_arguments,
-        # Argument graph
         "argument_graph": argument_graph,
-        # Quantified strengths
         "approve_total": clean_number(approve_total),
         "reject_total": clean_number(reject_total),
-        # Model interpretability
         "feature_contributions": feature_contributions,
-        # Explanations
         "why_explanation": why,
         "why_not_explanation": why_not,
+        # Clean structured backend output
+        "prediction": {
+            "probability_of_default": clean_number(probability),
+            "linear_score": clean_number(linear_score),
+            "feature_contributions": feature_contributions,
+        },
+        "policy": {
+            "decision": policy_decision,
+            "scenarios": policy_scenarios,
+        },
+        "argumentation": {
+            "approve_arguments": approve_arguments,
+            "reject_arguments": reject_arguments,
+            "approve_total": clean_number(approve_total),
+            "reject_total": clean_number(reject_total),
+            "risk_signal": argumentation_risk_signal,
+            "review_recommendation": review_recommendation,
+        },
+        "graph": argument_graph,
+        "explanations": {
+            "why": why,
+            "why_not": why_not,
+        },
     }
 
     return result

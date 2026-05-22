@@ -1,3 +1,4 @@
+import math
 from config.argument_rules import ARGUMENT_RULES
 
 
@@ -17,9 +18,12 @@ def activation_strength(value, threshold, scale, direction):
         distance = 0
 
     normalized_distance = distance / scale
-    activation = 0.5 + normalized_distance
 
-    return min(1.0, activation)
+    k = 5
+
+    activation = 1 / (1 + math.exp(-k * normalized_distance))
+
+    return activation
 
 
 def generate_arguments(applicant_data):
