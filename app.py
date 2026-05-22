@@ -26,7 +26,10 @@ st.write(
 
 st.header("Dataset Analysis")
 
-uploaded_file = st.file_uploader("Upload credit-risk dataset", type=["csv"])
+uploaded_file = st.file_uploader(
+    "Optional: upload a dataset for diagnostic rule analysis",
+    type=["csv"],
+)
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
