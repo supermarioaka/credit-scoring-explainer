@@ -1,13 +1,11 @@
 import math
-from config.argument_rules import ARGUMENT_RULES
+from src.rule_engine import get_active_rule_set
 
 
 def activation_strength(value, threshold, scale, direction):
     """
-    Computes how strongly a feature activates an argument.
-
-    direction = "above" means risk is activated when value > threshold.
-    direction = "below" means risk is activated when value < threshold.
+    Computes sigmoid activation strength and returns
+    both the activation value and the intermediate mathematical quantities.
     """
 
     if direction == "above":
@@ -20,20 +18,29 @@ def activation_strength(value, threshold, scale, direction):
     normalized_distance = distance / scale
 
     k = 5
-
     activation = 1 / (1 + math.exp(-k * normalized_distance))
 
-    return activation
+    return {
+        "distance_from_threshold": distance,
+        "normalized_distance": normalized_distance,
+        "sensitivity": k,
+        "activation": activation,
+    }
 
 
-def generate_arguments(applicant_data):
+def generate_arguments(applicant_data, rule_set=None):
     approve_arguments = []
     reject_arguments = []
 
     approve_total = 0
     reject_total = 0
 
-    for feature_name, rule in ARGUMENT_RULES.items():
+    if rule_set is None:
+        active_rules = get_active_rule_set()
+    else:
+        active_rules = rule_set
+
+    for feature_name, rule in active_rules.items():
         value = applicant_data[feature_name]
 
         threshold = rule["threshold"]
@@ -48,16 +55,22 @@ def generate_arguments(applicant_data):
             risk_is_active = value < threshold
             activation_direction = "below" if risk_is_active else "above"
 
-        activation = activation_strength(
+        activation_details = activation_strength(
             value,
             threshold,
             scale,
             activation_direction,
         )
 
+        activation = activation_details["activation"]
+
         strength = base_strength * activation
 
         argument = {
+            "distance_from_threshold": activation_details["distance_from_threshold"],
+            "normalized_distance": activation_details["normalized_distance"],
+            "activation_formula": "1 / (1 + exp(-k * normalized_distance))",
+            "strength_formula": "base_strength * activation_strength",
             "feature": feature_name,
             "value": value,
             "threshold": threshold,

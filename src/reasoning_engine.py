@@ -24,7 +24,7 @@ def clean_number(value):
         return value
 
 
-def evaluate_application(model, applicant_data):
+def evaluate_application(model, applicant_data, rule_set=None):
 
     # -----------------------------
     # Predictive ML layer
@@ -52,7 +52,7 @@ def evaluate_application(model, applicant_data):
     # -----------------------------
 
     approve_arguments, reject_arguments, approve_total, reject_total = (
-        generate_arguments(applicant_data)
+        generate_arguments(applicant_data, rule_set=rule_set)
     )
 
     argument_graph = build_argument_graph(

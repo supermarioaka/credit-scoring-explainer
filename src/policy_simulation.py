@@ -11,6 +11,35 @@ def classify_with_custom_policy(
         return "Reject"
 
 
+def build_policy_scenario(
+    name,
+    probability,
+    approve_threshold,
+    reject_threshold,
+):
+    decision = classify_with_custom_policy(
+        probability,
+        approve_threshold,
+        reject_threshold,
+    )
+
+    review_band_width = reject_threshold - approve_threshold
+
+    return {
+        "policy_name": name,
+        "approve_threshold": approve_threshold,
+        "reject_threshold": reject_threshold,
+        "review_band_width": review_band_width,
+        "decision": decision,
+        "policy_interpretation": (
+            f"Approve below {approve_threshold:.2f}, "
+            f"Review between {approve_threshold:.2f} and "
+            f"{reject_threshold:.2f}, "
+            f"Reject above {reject_threshold:.2f}."
+        ),
+    }
+
+
 def simulate_policy_scenarios(probability):
     scenarios = [
         {
@@ -38,19 +67,13 @@ def simulate_policy_scenarios(probability):
     results = []
 
     for scenario in scenarios:
-        decision = classify_with_custom_policy(
-            probability,
-            scenario["approve_threshold"],
-            scenario["reject_threshold"],
-        )
-
         results.append(
-            {
-                "policy_name": scenario["name"],
-                "approve_threshold": scenario["approve_threshold"],
-                "reject_threshold": scenario["reject_threshold"],
-                "decision": decision,
-            }
+            build_policy_scenario(
+                scenario["name"],
+                probability,
+                scenario["approve_threshold"],
+                scenario["reject_threshold"],
+            )
         )
 
     return results

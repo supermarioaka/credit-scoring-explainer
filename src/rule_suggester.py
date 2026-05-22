@@ -11,55 +11,87 @@ def classify_strength(absolute_correlation):
         return "Very weak"
 
 
+def build_candidate_rule(feature, metrics):
+    correlation = metrics["correlation_with_target"]
+    absolute_correlation = metrics["absolute_correlation"]
+
+    if correlation is None:
+        return None
+
+    if correlation > 0:
+        risk_direction = "above"
+        threshold = metrics["q75"]
+        risk_name = f"High {feature}"
+        approval_name = f"Acceptable {feature}"
+        risk_text = (
+            f"{feature} is above the suggested threshold, which is empirically "
+            "associated with higher default risk in this dataset."
+        )
+        approval_text = f"{feature} is not above the suggested risk threshold."
+
+    elif correlation < 0:
+        risk_direction = "below"
+        threshold = metrics["q25"]
+        risk_name = f"Low {feature}"
+        approval_name = f"Acceptable {feature}"
+        risk_text = (
+            f"{feature} is below the suggested threshold, which is empirically "
+            "associated with higher default risk in this dataset."
+        )
+        approval_text = f"{feature} is not below the suggested risk threshold."
+
+    else:
+        return None
+
+    return {
+        "threshold": threshold,
+        "risk_direction": risk_direction,
+        "scale": metrics["empirical_range"] if metrics["empirical_range"] else 1,
+        "base_strength": absolute_correlation,
+        "risk_name": risk_name,
+        "approval_name": approval_name,
+        "risk_text": risk_text,
+        "approval_text": approval_text,
+        "financial_meaning": (
+            "This is a statistically suggested feature. A human reviewer should "
+            "confirm its financial meaning before governance approval."
+        ),
+        "governance_justification": (
+            "This rule is automatically suggested from empirical dataset diagnostics. "
+            "It is not yet governance-approved."
+        ),
+        "threshold_origin": "Empirical quantile-based candidate threshold",
+        "mathematical_basis": (
+            "Correlation with target and feature distribution quantiles."
+        ),
+        "governance_status": "Candidate rule - requires human review",
+        "interpretability_level": "Pending review",
+        "diagnostics": {
+            "correlation_with_target": correlation,
+            "absolute_correlation": absolute_correlation,
+            "strength_category": classify_strength(absolute_correlation),
+            "q25": metrics["q25"],
+            "median": metrics["median"],
+            "q75": metrics["q75"],
+            "iqr": metrics["iqr"],
+        },
+    }
+
+
 def suggest_rules_from_metrics(feature_metrics):
     """
     Suggest preliminary argumentation rules from dataset-level metrics.
 
-    These are statistical candidates, not final governance-approved rules.
+    Output is intentionally shaped like approved argument rules,
+    so it can later be reviewed and used by the rule engine.
     """
 
     suggested_rules = {}
 
     for feature, metrics in feature_metrics.items():
-        correlation = metrics["correlation_with_target"]
-        absolute_correlation = metrics["absolute_correlation"]
+        candidate_rule = build_candidate_rule(feature, metrics)
 
-        if correlation is None:
-            continue
-
-        if correlation > 0:
-            risk_direction = "above"
-            supports = "Reject"
-            threshold = metrics["q75"]
-        elif correlation < 0:
-            risk_direction = "below"
-            supports = "Reject"
-            threshold = metrics["q25"]
-        else:
-            risk_direction = "unclear"
-            supports = "Review"
-            threshold = metrics["median"]
-
-        suggested_rules[feature] = {
-            "feature": feature,
-            "threshold": threshold,
-            "risk_direction": risk_direction,
-            "suggested_support": supports,
-            "correlation_with_target": correlation,
-            "absolute_correlation": absolute_correlation,
-            "strength_category": classify_strength(absolute_correlation),
-            "distribution_reference": {
-                "q25": metrics["q25"],
-                "median": metrics["median"],
-                "q75": metrics["q75"],
-                "iqr": metrics["iqr"],
-            },
-            "statistical_reason": (
-                "This candidate rule is suggested from the empirical relationship "
-                "between the feature and the target variable, combined with the "
-                "feature's observed distribution."
-            ),
-            "governance_status": "Candidate rule - requires human review",
-        }
+        if candidate_rule is not None:
+            suggested_rules[feature] = candidate_rule
 
     return suggested_rules

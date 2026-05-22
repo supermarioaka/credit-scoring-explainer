@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
+from src.ai_explainer import generate_plain_language_explanation
 from src.modeling import load_model, predict_default_probability
 from src.reasoning_engine import evaluate_application
 from src.reporting import generate_case_summary
@@ -88,7 +89,7 @@ if st.sidebar.button("Analyze Applicant"):
 
     result = evaluate_application(model, applicant_data)
     summary = generate_case_summary(result)
-
+    ai_explanation = generate_plain_language_explanation(summary)
     probability = result["probability_of_default"]
     decision = result["policy_decision"]
     argumentation_risk_signal = result["argumentation_risk_signal"]
@@ -159,6 +160,8 @@ if st.sidebar.button("Analyze Applicant"):
         st.subheader("WHY-NOT Explanation")
         st.warning(why_not)
 
+        st.subheader("AI Plain-Language Explanation")
+        st.info(ai_explanation)
     # ------------------------------------------------------------
     # Tab 2: Arguments
     # ------------------------------------------------------------
