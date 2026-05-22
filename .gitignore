@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+*.pkl
+data/cs-training.csv
+.env
