@@ -28,6 +28,36 @@ def build_model_bundle(
     prepared_data: dict,
     validation_metrics: dict,
 ) -> dict:
+    preprocessing_summary = {
+        "train_size": int(len(prepared_data["X_train"])),
+        "test_size": int(len(prepared_data["X_test"])),
+        "number_of_features": len(prepared_data["features"]),
+        "features": prepared_data["features"],
+        "target": prepared_data["target"],
+        "missing_values_before_imputation": prepared_data[
+            "missing_values_before_imputation"
+        ],
+        "missing_values_after_imputation": prepared_data[
+            "missing_values_after_imputation"
+        ],
+        "imputation_values": prepared_data["imputation_values"],
+        "winsorization_bounds": prepared_data["winsorization_bounds"],
+        "scaler": {
+            "type": "StandardScaler",
+            "fitted_on": "training set",
+            "applied_to": "training set and test set",
+            "mean": prepared_data["scaler"].mean_.tolist(),
+            "scale": prepared_data["scaler"].scale_.tolist(),
+        },
+        "split": {
+            "method": "train_test_split",
+            "test_size": 0.20,
+            "train_size": 0.80,
+            "random_state": 42,
+            "stratify": "target variable SeriousDlqin2yrs",
+        },
+    }
+
     return {
         "model_type": "Logistic Regression",
         "model": model,
@@ -37,6 +67,7 @@ def build_model_bundle(
         "winsorization_bounds": prepared_data["winsorization_bounds"],
         "scaler": prepared_data["scaler"],
         "validation_metrics": validation_metrics,
+        "preprocessing_summary": preprocessing_summary,
         "preprocessing_description": {
             "imputation": "Missing numeric values are filled using training-set means.",
             "winsorization": "Features are clipped using training-set 1st and 99th percentiles.",

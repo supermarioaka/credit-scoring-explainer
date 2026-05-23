@@ -24,6 +24,17 @@ def get_preprocessing_description(model_object) -> dict | None:
     return None
 
 
+def get_preprocessing_summary(model_object) -> dict | None:
+    """
+    Returns the full preprocessing summary if the saved model is a model bundle.
+    """
+
+    if isinstance(model_object, dict):
+        return model_object.get("preprocessing_summary")
+
+    return None
+
+
 def compute_normalized_coefficient_strengths(
     model_object,
     explanation_features: list[str] | None = None,
@@ -108,4 +119,5 @@ def create_model_diagnostics_report(model_object) -> dict:
         ),
         "validation_metrics": get_validation_metrics(model_object),
         "preprocessing_description": get_preprocessing_description(model_object),
+        "preprocessing_summary": get_preprocessing_summary(model_object),
     }

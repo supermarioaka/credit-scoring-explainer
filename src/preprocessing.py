@@ -134,9 +134,24 @@ def prepare_training_data(df: pd.DataFrame) -> dict:
 
     X_train, X_test, y_train, y_test = create_train_test_split(X, y)
 
+    missing_values_before_imputation = {
+        "train": {
+            feature: int(count) for feature, count in X_train.isna().sum().items()
+        },
+        "test": {feature: int(count) for feature, count in X_test.isna().sum().items()},
+    }
+
     imputation_values = compute_imputation_values(X_train)
+
     X_train = apply_imputation(X_train, imputation_values)
     X_test = apply_imputation(X_test, imputation_values)
+
+    missing_values_after_imputation = {
+        "train": {
+            feature: int(count) for feature, count in X_train.isna().sum().items()
+        },
+        "test": {feature: int(count) for feature, count in X_test.isna().sum().items()},
+    }
 
     winsorization_bounds = compute_winsorization_bounds(X_train)
     X_train = apply_winsorization(X_train, winsorization_bounds)
@@ -152,6 +167,8 @@ def prepare_training_data(df: pd.DataFrame) -> dict:
         "y_train": y_train,
         "y_test": y_test,
         "imputation_values": imputation_values,
+        "missing_values_before_imputation": missing_values_before_imputation,
+        "missing_values_after_imputation": missing_values_after_imputation,
         "winsorization_bounds": winsorization_bounds,
         "scaler": scaler,
         "features": FEATURES,

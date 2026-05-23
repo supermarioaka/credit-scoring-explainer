@@ -45,6 +45,51 @@ def main():
     else:
         print("No validation metrics found in model object.")
 
+    print("\nPREPROCESSING SUMMARY")
+    preprocessing_summary = predictive["model_diagnostics"]["preprocessing_summary"]
+
+    if preprocessing_summary is not None:
+        print("Train size:", preprocessing_summary["train_size"])
+        print("Test size:", preprocessing_summary["test_size"])
+        print("Number of features:", preprocessing_summary["number_of_features"])
+        print("Features:", preprocessing_summary["features"])
+
+        print("\nMissing values before imputation:")
+        print(
+            "Train:", preprocessing_summary["missing_values_before_imputation"]["train"]
+        )
+        print(
+            "Test:", preprocessing_summary["missing_values_before_imputation"]["test"]
+        )
+
+        print("\nMissing values after imputation:")
+        print(
+            "Train:", preprocessing_summary["missing_values_after_imputation"]["train"]
+        )
+        print("Test:", preprocessing_summary["missing_values_after_imputation"]["test"])
+
+        print("\nImputation values:")
+        for feature, value in preprocessing_summary["imputation_values"].items():
+            print("-", feature, ":", round(value, 4))
+
+        print("\nWinsorization bounds:")
+        for feature, bounds in preprocessing_summary["winsorization_bounds"].items():
+            print(
+                "-",
+                feature,
+                "| lower:",
+                round(bounds["lower"], 4),
+                "| upper:",
+                round(bounds["upper"], 4),
+            )
+
+        print("\nScaler confirmation:")
+        print("Type:", preprocessing_summary["scaler"]["type"])
+        print("Fitted on:", preprocessing_summary["scaler"]["fitted_on"])
+        print("Applied to:", preprocessing_summary["scaler"]["applied_to"])
+    else:
+        print("No preprocessing summary found in model object.")
+
     print("\nCOEFFICIENT NORMALIZATION")
     coefficient_strengths = predictive["model_diagnostics"]["coefficient_strengths"]
 
