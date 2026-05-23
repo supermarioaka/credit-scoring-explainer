@@ -6,14 +6,23 @@ from src.decision_policy import apply_business_policy
 
 
 def get_counterfactual_target(
-    current_value: float, threshold: float, risk_direction: str
+    current_value: float,
+    threshold: float,
+    risk_direction: str,
+    is_discrete: bool = False,
 ) -> float:
     epsilon = 0.01
 
     if risk_direction == "above":
+        if is_discrete:
+            return threshold
+
         return threshold - epsilon
 
     if risk_direction == "below":
+        if is_discrete:
+            return threshold
+
         return threshold + epsilon
 
     raise ValueError(f"Unknown risk direction: {risk_direction}")
@@ -112,6 +121,7 @@ def generate_counterfactuals(
             current_value=current_value,
             threshold=threshold,
             risk_direction=risk_direction,
+            is_discrete=rule.get("is_discrete", False),
         )
 
         changed_explanation_data = explanation_applicant_data.copy()
@@ -155,6 +165,7 @@ def generate_counterfactuals(
                     current_value=current_value,
                     threshold=threshold,
                     risk_direction=risk_direction,
+                    is_discrete=rule.get("is_discrete", False),
                 )
 
         combined_impact = calculate_counterfactual_impact(

@@ -8,11 +8,14 @@ def compute_activation_strength(
 ) -> float:
     """
     Computes activation strength using the thesis idea:
-    arguments become stronger as the applicant moves further away
-    from the relevant threshold.
 
-    For discrete events, such as NumberOfTimes90DaysLate, activation is 1
-    when the risk rule is active.
+        activation_strength = sigmoid(distance_from_threshold / scale)
+
+    The further the applicant is from the threshold, the stronger
+    the argument becomes.
+
+    For discrete rules, such as NumberOfTimes90DaysLate, activation
+    is set to 1.0 because crossing the threshold is already meaningful.
     """
 
     if is_discrete:
@@ -28,7 +31,7 @@ def compute_activation_strength(
 
 def build_argument(rule_evaluation: dict) -> dict:
     rule = rule_evaluation["rule"]
-    risk_active = rule_evaluation["risk_active"]
+    side = rule_evaluation["side"]
 
     base_strength = rule["base_strength"]
 
@@ -38,19 +41,16 @@ def build_argument(rule_evaluation: dict) -> dict:
         is_discrete=rule.get("is_discrete", False),
     )
 
-    if not risk_active:
-        activation_strength = 1 - activation_strength
-
     strength = base_strength * activation_strength
 
-    if risk_active:
-        side = "Reject"
+    if side == "Reject":
         name = rule["risk_name"]
         text = rule["risk_text"]
-    else:
-        side = "Approve"
+    elif side == "Approve":
         name = rule["approval_name"]
         text = rule["approval_text"]
+    else:
+        raise ValueError(f"Unknown argument side: {side}")
 
     return {
         "feature": rule_evaluation["feature"],
@@ -59,6 +59,10 @@ def build_argument(rule_evaluation: dict) -> dict:
         "text": text,
         "value": rule_evaluation["value"],
         "threshold": rule_evaluation["threshold"],
+        "risk_direction": rule_evaluation["risk_direction"],
+        "signed_distance_from_threshold": rule_evaluation[
+            "signed_distance_from_threshold"
+        ],
         "distance_from_threshold": rule_evaluation["distance_from_threshold"],
         "base_strength": base_strength,
         "activation_strength": activation_strength,
