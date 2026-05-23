@@ -1,48 +1,13 @@
-from src.argumentation import generate_arguments
-from src.decision_policy import classify_decision
-from src.rule_engine import get_active_rule_set
+from config.argument_rules import ARGUMENT_RULES
+from src.rule_engine import evaluate_applicant_rules
+from src.argumentation import build_arguments
+from src.reasoning_engine import summarize_argument_strengths
+from src.decision_policy import apply_business_policy
 
 
-def calculate_counterfactual_impact(
-    original_data, changed_data, model, predict_function, rule_set=None
-):
-    _, _, original_approve, original_reject = generate_arguments(
-        original_data, rule_set=rule_set
-    )
-    _, _, new_approve, new_reject = generate_arguments(changed_data, rule_set=rule_set)
-
-    original_probability = predict_function(model, original_data)
-    new_probability = predict_function(model, changed_data)
-
-    original_decision = classify_decision(original_probability)
-    new_decision = classify_decision(new_probability)
-
-    return {
-        "new_approve_total": new_approve,
-        "new_reject_total": new_reject,
-        "approval_change": new_approve - original_approve,
-        "rejection_change": new_reject - original_reject,
-        "original_probability": original_probability,
-        "new_probability": new_probability,
-        "probability_change": new_probability - original_probability,
-        "original_decision": original_decision,
-        "new_decision": new_decision,
-    }
-
-
-def get_counterfactual_target(current_value, threshold, risk_direction):
-    """
-    Compute the nearest threshold-crossing counterfactual value.
-
-    For above-risk rules:
-        risk active when value > threshold
-        improvement moves value just below threshold
-
-    For below-risk rules:
-        risk active when value < threshold
-        improvement moves value just above threshold
-    """
-
+def get_counterfactual_target(
+    current_value: float, threshold: float, risk_direction: str
+) -> float:
     epsilon = 0.01
 
     if risk_direction == "above":
@@ -51,116 +16,167 @@ def get_counterfactual_target(current_value, threshold, risk_direction):
     if risk_direction == "below":
         return threshold + epsilon
 
-    return current_value
+    raise ValueError(f"Unknown risk direction: {risk_direction}")
 
 
-def generate_counterfactuals(applicant_data, model, predict_function, rule_set=None):
+def is_risk_active(value: float, threshold: float, risk_direction: str) -> bool:
+    if risk_direction == "above":
+        return value > threshold
+
+    if risk_direction == "below":
+        return value < threshold
+
+    raise ValueError(f"Unknown risk direction: {risk_direction}")
+
+
+def calculate_argument_decision(applicant_data: dict) -> dict:
+    rule_evaluations = evaluate_applicant_rules(applicant_data)
+    arguments = build_arguments(rule_evaluations)
+    strength_summary = summarize_argument_strengths(arguments)
+
+    return {
+        "arguments": arguments,
+        "approve_total": strength_summary["approve_total"],
+        "reject_total": strength_summary["reject_total"],
+        "argument_decision": strength_summary["argument_decision"],
+    }
+
+
+def calculate_counterfactual_impact(
+    original_explanation_data: dict,
+    changed_explanation_data: dict,
+    model_applicant_data: dict,
+    model,
+    predict_function,
+) -> dict:
+    original_argument_result = calculate_argument_decision(original_explanation_data)
+    new_argument_result = calculate_argument_decision(changed_explanation_data)
+
+    changed_model_data = model_applicant_data.copy()
+
+    for feature, value in changed_explanation_data.items():
+        changed_model_data[feature] = value
+
+    original_probability = predict_function(model, model_applicant_data)
+    new_probability = predict_function(model, changed_model_data)
+
+    original_business_decision = apply_business_policy(original_probability)
+    new_business_decision = apply_business_policy(new_probability)
+
+    return {
+        "original_approve_total": original_argument_result["approve_total"],
+        "original_reject_total": original_argument_result["reject_total"],
+        "new_approve_total": new_argument_result["approve_total"],
+        "new_reject_total": new_argument_result["reject_total"],
+        "approval_change": (
+            new_argument_result["approve_total"]
+            - original_argument_result["approve_total"]
+        ),
+        "rejection_change": (
+            new_argument_result["reject_total"]
+            - original_argument_result["reject_total"]
+        ),
+        "original_probability": original_probability,
+        "new_probability": new_probability,
+        "probability_change": new_probability - original_probability,
+        "original_business_decision": original_business_decision,
+        "new_business_decision": new_business_decision,
+        "original_argument_decision": original_argument_result["argument_decision"],
+        "new_argument_decision": new_argument_result["argument_decision"],
+    }
+
+
+def generate_counterfactuals(
+    explanation_applicant_data: dict,
+    model_applicant_data: dict,
+    model,
+    predict_function,
+) -> list[dict]:
     suggestions = []
-    if rule_set is None:
-        active_rules = get_active_rule_set()
-    else:
-        active_rules = rule_set
-    for feature_name, rule in active_rules.items():
-        current_value = applicant_data[feature_name]
+
+    for feature, rule in ARGUMENT_RULES.items():
+        current_value = explanation_applicant_data[feature]
         threshold = rule["threshold"]
         risk_direction = rule["risk_direction"]
 
-        if risk_direction == "above":
-            risk_is_active = current_value > threshold
-        elif risk_direction == "below":
-            risk_is_active = current_value < threshold
-        else:
-            risk_is_active = False
+        risk_active = is_risk_active(
+            value=current_value,
+            threshold=threshold,
+            risk_direction=risk_direction,
+        )
 
-        if not risk_is_active:
+        if not risk_active:
             continue
 
         target_value = get_counterfactual_target(
-            current_value,
-            threshold,
-            risk_direction,
+            current_value=current_value,
+            threshold=threshold,
+            risk_direction=risk_direction,
         )
 
-        changed_data = applicant_data.copy()
-        changed_data[feature_name] = target_value
+        changed_explanation_data = explanation_applicant_data.copy()
+        changed_explanation_data[feature] = target_value
 
         impact = calculate_counterfactual_impact(
-            applicant_data, changed_data, model, predict_function, rule_set=rule_set
+            original_explanation_data=explanation_applicant_data,
+            changed_explanation_data=changed_explanation_data,
+            model_applicant_data=model_applicant_data,
+            model=model,
+            predict_function=predict_function,
         )
-
-        absolute_change = target_value - current_value
 
         suggestions.append(
             {
-                "title": f"Improve {feature_name}",
-                "feature": feature_name,
-                "current": f"{current_value}",
-                "target": f"{target_value}",
+                "title": f"Improve {feature}",
+                "feature": feature,
+                "current_value": current_value,
+                "target_value": target_value,
                 "threshold": threshold,
                 "risk_direction": risk_direction,
-                "absolute_change": absolute_change,
-                "change": (
-                    f"Change {feature_name} from {current_value} to {target_value}"
-                ),
-                "mathematical_condition": (
-                    f"Risk is active because {feature_name} violates "
-                    f"the rule threshold under direction '{risk_direction}'."
-                ),
+                "change": f"Change {feature} from {current_value} to {target_value}.",
                 "meaning": (
-                    f"This change crosses the threshold for '{rule['risk_name']}' "
-                    f"and weakens the corresponding rejection-supporting argument."
+                    f"This crosses the threshold for '{rule['risk_name']}' "
+                    "and weakens the corresponding rejection-supporting argument."
                 ),
                 **impact,
             }
         )
 
     if suggestions:
-        combined_data = applicant_data.copy()
+        combined_explanation_data = explanation_applicant_data.copy()
 
-        for feature_name, rule in active_rules.items():
-            current_value = applicant_data[feature_name]
+        for feature, rule in ARGUMENT_RULES.items():
+            current_value = explanation_applicant_data[feature]
             threshold = rule["threshold"]
             risk_direction = rule["risk_direction"]
 
-            if risk_direction == "above" and current_value > threshold:
-                combined_data[feature_name] = get_counterfactual_target(
-                    current_value,
-                    threshold,
-                    risk_direction,
-                )
-
-            elif risk_direction == "below" and current_value < threshold:
-                combined_data[feature_name] = get_counterfactual_target(
-                    current_value,
-                    threshold,
-                    risk_direction,
+            if is_risk_active(current_value, threshold, risk_direction):
+                combined_explanation_data[feature] = get_counterfactual_target(
+                    current_value=current_value,
+                    threshold=threshold,
+                    risk_direction=risk_direction,
                 )
 
         combined_impact = calculate_counterfactual_impact(
-            applicant_data,
-            combined_data,
-            model,
-            predict_function,
+            original_explanation_data=explanation_applicant_data,
+            changed_explanation_data=combined_explanation_data,
+            model_applicant_data=model_applicant_data,
+            model=model,
+            predict_function=predict_function,
         )
 
         suggestions.append(
             {
                 "title": "Combined Improvement Scenario",
                 "feature": "Multiple active risk features",
-                "current": "Current applicant profile",
-                "target": "All active risk thresholds improved",
+                "current_value": "Current applicant profile",
+                "target_value": "All active risk thresholds improved",
                 "threshold": "Multiple thresholds",
                 "risk_direction": "Multiple directions",
-                "absolute_change": None,
                 "change": "Apply all feasible rule-based improvements together.",
-                "mathematical_condition": (
-                    "All currently active risk rules are moved to the nearest "
-                    "non-risk side of their thresholds."
-                ),
                 "meaning": (
-                    "This scenario estimates the combined effect of correcting all currently "
-                    "active risk-threshold violations. It is useful for assessing whether the "
-                    "case could move toward a lower-risk profile."
+                    "This scenario estimates the combined effect of correcting all "
+                    "currently active risk-threshold violations."
                 ),
                 **combined_impact,
             }
@@ -171,25 +187,12 @@ def generate_counterfactuals(applicant_data, model, predict_function, rule_set=N
             {
                 "title": "No Major Rule-Based Improvement Needed",
                 "feature": None,
-                "current": "-",
-                "target": "-",
+                "current_value": "-",
+                "target_value": "-",
                 "threshold": None,
                 "risk_direction": None,
-                "absolute_change": None,
                 "change": "-",
-                "mathematical_condition": (
-                    "No rejection-supporting rule is currently active."
-                ),
-                "meaning": "No major rejection threshold is currently activated.",
-                "new_approve_total": None,
-                "new_reject_total": None,
-                "approval_change": None,
-                "rejection_change": None,
-                "original_probability": None,
-                "new_probability": None,
-                "probability_change": None,
-                "original_decision": None,
-                "new_decision": None,
+                "meaning": "No rejection-supporting rule is currently active.",
             }
         )
 

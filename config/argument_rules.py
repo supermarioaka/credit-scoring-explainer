@@ -29,6 +29,7 @@ ARGUMENT_RULES = {
         "risk_direction": "above",
         "scale": 1,
         "base_strength": 0.525,
+        "is_discrete": True,
         "risk_name": "Serious Late Payments",
         "approval_name": "No Serious Late Payments",
         "risk_text": "The applicant has at least one serious 90+ days late payment.",
@@ -38,7 +39,7 @@ ARGUMENT_RULES = {
             "defined as payments 90 or more days past due."
         ),
         "governance_justification": (
-            "Any 90+ days past-due event is treated as a strong adverse    signal because "
+            "Any 90+ days past-due event is treated as a strong adverse signal because "
             "it reflects severe repayment difficulty. The base strength is derived from "
             "the normalized model coefficient magnitude."
         ),

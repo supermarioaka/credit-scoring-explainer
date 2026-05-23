@@ -1,52 +1,44 @@
-def generate_audit_trail(
-    applicant_data, probability, decision, approve_total, reject_total
-):
-    audit_steps = []
+from datetime import datetime
 
-    audit_steps.append(
-        "Step 1: Applicant data was received and converted into the model input format."
-    )
 
-    audit_steps.append(
-        f"Step 2: The predictive model estimated a probability of default of {probability:.2%}."
-    )
-
-    audit_steps.append(
-        f"Step 3: The business decision policy classified the application as: {decision}."
-    )
-
-    audit_steps.append(
-        "Step 4: The argumentation layer evaluated each governance-approved rule "
-        "against the applicant's feature values."
-    )
-
-    audit_steps.append(
-        "Step 5: For each activated or non-activated rule, argument strength was computed "
-        "as: base strength × sigmoid activation strength."
-    )
-
-    audit_steps.append(
-        f"Step 6: Total approval-supporting argument strength = {approve_total:.3f}."
-    )
-
-    audit_steps.append(
-        f"Step 7: Total rejection-supporting argument strength = {reject_total:.3f}."
-    )
-
-    if reject_total > approve_total:
-        audit_steps.append(
-            "Step 8: Rejection-supporting arguments dominate the argumentation comparison."
-        )
-    elif approve_total > reject_total:
-        audit_steps.append(
-            "Step 8: Approval-supporting arguments dominate the argumentation comparison."
-        )
-    else:
-        audit_steps.append("Step 8: Approval and rejection arguments are balanced.")
-
-    audit_steps.append(
-        "Step 9: The audit trail records the path from applicant data to prediction, "
-        "policy classification, argument construction, and quantified reasoning."
-    )
-
-    return audit_steps
+def create_audit_record(
+    applicant_data: dict,
+    probability_of_default: float,
+    business_decision: str,
+    arguments: list[dict],
+    strength_summary: dict,
+    linear_score: float | None = None,
+    feature_contributions: dict | None = None,
+) -> dict:
+    return {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "predictive_layer": {
+            "model_type": "Logistic Regression",
+            "input_features": list(applicant_data.keys()),
+            "linear_score": linear_score,
+            "probability_of_default": probability_of_default,
+            "business_policy": {
+                "approve": "PD < 0.10",
+                "review": "0.10 <= PD <= 0.30",
+                "reject": "PD > 0.30",
+            },
+            "business_decision": business_decision,
+            "feature_contributions": feature_contributions,
+        },
+        "argumentation_layer": {
+            "explanation_note": (
+                "The argumentation layer uses selected financially interpretable "
+                "features and excludes age from the explanation."
+            ),
+            "strength_formula": "strength = base_strength × activation_strength",
+            "argument_based_decision": strength_summary["argument_decision"],
+            "approve_total": strength_summary["approve_total"],
+            "reject_total": strength_summary["reject_total"],
+            "arguments": arguments,
+        },
+        "audit_statement": (
+            "This record stores the applicant inputs, predictive output, business "
+            "policy decision, argument-based reasoning, argument strengths, and "
+            "supporting explanations required to reproduce the decision path."
+        ),
+    }

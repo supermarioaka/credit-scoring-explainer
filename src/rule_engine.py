@@ -1,72 +1,42 @@
 from config.argument_rules import ARGUMENT_RULES
 
 
-def get_active_rule_set(mode="approved", suggested_rules=None):
-    """
-    Return the rule set used by the argumentation engine.
+def evaluate_rule(feature: str, value: float, rule: dict) -> dict:
+    threshold = rule["threshold"]
+    risk_direction = rule["risk_direction"]
 
-    approved:
-        Uses governance-approved rules.
-
-    suggested:
-        Uses statistically suggested candidate rules.
-
-    custom:
-        Allows externally supplied rules.
-    """
-
-    if mode == "approved":
-        return ARGUMENT_RULES
-
-    if mode == "suggested":
-        if suggested_rules is None:
-            raise ValueError("suggested_rules must be provided when mode='suggested'.")
-        return suggested_rules
-
-    if mode == "custom":
-        if suggested_rules is None:
-            raise ValueError("custom rules must be provided when mode='custom'.")
-        return suggested_rules
-
-    raise ValueError("Unknown rule mode. Use 'approved', 'suggested', or 'custom'.")
-
-
-def validate_rule_set(rule_set):
-    """
-    Basic validation for a rule set before it is used by the argumentation engine.
-    """
-
-    required_fields = [
-        "threshold",
-        "risk_direction",
-        "scale",
-        "base_strength",
-        "risk_name",
-        "approval_name",
-        "risk_text",
-        "approval_text",
-        "financial_meaning",
-        "governance_justification",
-    ]
-
-    errors = []
-
-    for feature_name, rule in rule_set.items():
-        for field in required_fields:
-            if field not in rule:
-                errors.append(
-                    f"Rule for feature '{feature_name}' is missing field '{field}'."
-                )
-
-        if "risk_direction" in rule and rule["risk_direction"] not in [
-            "above",
-            "below",
-        ]:
-            errors.append(
-                f"Rule for feature '{feature_name}' has invalid risk_direction."
-            )
+    if risk_direction == "above":
+        risk_active = value > threshold
+        distance = max(0, value - threshold)
+    elif risk_direction == "below":
+        risk_active = value < threshold
+        distance = max(0, threshold - value)
+    else:
+        raise ValueError(f"Unknown risk direction: {risk_direction}")
 
     return {
-        "is_valid": len(errors) == 0,
-        "errors": errors,
+        "feature": feature,
+        "value": value,
+        "threshold": threshold,
+        "risk_active": risk_active,
+        "distance_from_threshold": distance,
+        "rule": rule,
     }
+
+
+def evaluate_applicant_rules(applicant_data: dict) -> list[dict]:
+    evaluations = []
+
+    for feature, rule in ARGUMENT_RULES.items():
+        if feature not in applicant_data:
+            raise ValueError(f"Missing applicant value for feature: {feature}")
+
+        evaluations.append(
+            evaluate_rule(
+                feature=feature,
+                value=applicant_data[feature],
+                rule=rule,
+            )
+        )
+
+    return evaluations
