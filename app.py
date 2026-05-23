@@ -137,6 +137,8 @@ if st.button("Evaluate Applicant"):
         business_decision=business_decision,
         arguments=arguments,
         strength_summary=strength_summary,
+        linear_score=linear_score,
+        feature_contributions=feature_contributions,
     )
     counterfactuals = generate_counterfactuals(
         explanation_applicant_data=applicant_data,
@@ -232,7 +234,7 @@ if st.button("Evaluate Applicant"):
 
     st.header("7. Audit Trail")
 
-    audit_df = pd.DataFrame(audit_record["arguments"])
+    audit_df = pd.DataFrame(audit_record["argumentation_layer"]["arguments"])
     st.dataframe(audit_df, width="stretch")
 
     with st.expander("Full audit record"):

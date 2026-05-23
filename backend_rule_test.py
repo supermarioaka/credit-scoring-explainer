@@ -1,94 +1,104 @@
-import pandas as pd
-
-from src.generic_rule_pipeline import (
-    analyze_dataset_for_argument_rules,
-    evaluate_applicant_with_generated_rules,
+from src.rule_engine import evaluate_applicant_rules
+from src.argumentation import build_arguments
+from src.reasoning_engine import (
+    summarize_argument_strengths,
+    generate_why_explanation,
+    generate_why_not_explanation,
 )
-
-df = pd.read_csv("data/cs-training.csv")
-
-result = analyze_dataset_for_argument_rules(
-    df=df,
-    target_column="SeriousDlqin2yrs",
+from src.decision_policy import apply_business_policy
+from src.audit import create_audit_record
+from src.modeling import (
+    load_model,
+    predict_default_probability,
+    compute_linear_score,
+    compute_feature_contributions,
 )
+from src.counterfactual import generate_counterfactuals
 
-print("Validation:")
-print(result["validation"])
 
-print("\nSuggested rules:")
-for feature, rule in result["suggested_rules"].items():
-    print("\nFeature:", feature)
-    print("Threshold:", rule["threshold"])
-    print("Risk direction:", rule["risk_direction"])
-    print("Base strength:", rule["base_strength"])
-    print("Rule quality:", rule["rule_quality"])
-    print("Governance status:", rule["governance_status"])
+def main():
+    explanation_applicant_data = {
+        "RevolvingUtilizationOfUnsecuredLines": 0.58,
+        "DebtRatio": 0.42,
+        "MonthlyIncome": 2333,
+        "NumberOfTimes90DaysLate": 1,
+    }
 
-print("\nInterpreted rules:")
+    model_applicant_data = explanation_applicant_data.copy()
+    model_applicant_data["age"] = 35
 
-for feature, rule in result["interpreted_rules"].items():
-    print("\nFeature:", feature)
-    print("AI financial interpretation:", rule["ai_financial_interpretation"])
-    print("AI governance note:", rule["ai_governance_note"])
+    model = load_model()
 
-print("\nLLM ANALYSIS:")
-print("LLM status:", result["llm_analysis"]["llm_status"])
-print("LLM explanation:")
-print(result["llm_analysis"]["llm_explanation"])
-print("\nDYNAMIC APPLICANT ARGUMENTATION TEST:")
-
-applicant_data = {
-    "NumberOfTime30-59DaysPastDueNotWorse": 1,
-    "MonthlyIncome": 2500,
-    "NumberOfOpenCreditLinesAndLoans": 4,
-    "NumberOfTimes90DaysLate": 1,
-    "NumberOfTime60-89DaysPastDueNotWorse": 0,
-    "NumberOfDependents": 2,
-}
-
-applicant_result = evaluate_applicant_with_generated_rules(
-    applicant_data=applicant_data,
-    rule_set=result["suggested_rules"],
-)
-
-approve_arguments = applicant_result["approve_arguments"]
-reject_arguments = applicant_result["reject_arguments"]
-approve_total = applicant_result["approve_total"]
-reject_total = applicant_result["reject_total"]
-argument_decision = applicant_result["argument_decision"]
-
-print("Approval total:", approve_total)
-print("Rejection total:", reject_total)
-print("Argument-based decision:", argument_decision)
-
-print("\nApproval arguments:")
-for argument in approve_arguments:
-    print(
-        "-",
-        argument["name"],
-        "| strength:",
-        round(argument["strength"], 3),
-        "| base:",
-        round(argument["base_strength"], 3),
-        "| activation:",
-        round(argument["activation_strength"], 3),
-        "| distance:",
-        round(argument["distance_from_threshold"], 3),
+    probability_of_default = predict_default_probability(
+        model=model,
+        applicant_data=model_applicant_data,
     )
-    print("  formula:", argument["strength_formula"])
 
-print("\nRejection arguments:")
-for argument in reject_arguments:
-    print(
-        "-",
-        argument["name"],
-        "| strength:",
-        round(argument["strength"], 3),
-        "| base:",
-        round(argument["base_strength"], 3),
-        "| activation:",
-        round(argument["activation_strength"], 3),
-        "| distance:",
-        round(argument["distance_from_threshold"], 3),
+    linear_score = compute_linear_score(
+        model=model,
+        applicant_data=model_applicant_data,
     )
-    print("  formula:", argument["strength_formula"])
+
+    feature_contributions = compute_feature_contributions(
+        model=model,
+        applicant_data=model_applicant_data,
+    )
+
+    business_decision = apply_business_policy(probability_of_default)
+
+    rule_evaluations = evaluate_applicant_rules(explanation_applicant_data)
+    arguments = build_arguments(rule_evaluations)
+
+    strength_summary = summarize_argument_strengths(arguments)
+
+    argument_decision = strength_summary["argument_decision"]
+    why_explanation = generate_why_explanation(arguments, argument_decision)
+    why_not_explanation = generate_why_not_explanation(arguments, argument_decision)
+
+    audit_record = create_audit_record(
+        applicant_data=model_applicant_data,
+        probability_of_default=probability_of_default,
+        business_decision=business_decision,
+        arguments=arguments,
+        strength_summary=strength_summary,
+        linear_score=linear_score,
+        feature_contributions=feature_contributions,
+    )
+
+    counterfactuals = generate_counterfactuals(
+        explanation_applicant_data=explanation_applicant_data,
+        model_applicant_data=model_applicant_data,
+        model=model,
+        predict_function=predict_default_probability,
+    )
+
+    print("\nPREDICTIVE LAYER")
+    print("Probability of default:", round(probability_of_default, 4))
+    print("Linear score:", round(linear_score, 4))
+    print("Business decision:", business_decision)
+
+    print("\nARGUMENTATION LAYER")
+    print("Approval total:", round(strength_summary["approve_total"], 4))
+    print("Rejection total:", round(strength_summary["reject_total"], 4))
+    print("Argument-based decision:", argument_decision)
+
+    print("\nWHY EXPLANATION")
+    for item in why_explanation:
+        print("-", item)
+
+    print("\nWHY-NOT EXPLANATION")
+    for item in why_not_explanation:
+        print("-", item)
+
+    print("\nCOUNTERFACTUALS")
+    for suggestion in counterfactuals:
+        print("-", suggestion["title"])
+        print(" ", suggestion["change"])
+        print(" ", suggestion["meaning"])
+
+    print("\nAUDIT RECORD KEYS")
+    print(audit_record.keys())
+
+
+if __name__ == "__main__":
+    main()
