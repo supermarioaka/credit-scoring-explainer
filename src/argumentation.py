@@ -15,6 +15,9 @@ def activation_strength(value, threshold, scale, direction):
     else:
         distance = 0
 
+    if scale == 0 or scale is None:
+        scale = 1
+
     normalized_distance = distance / scale
 
     k = 5

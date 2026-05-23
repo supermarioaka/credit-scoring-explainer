@@ -78,20 +78,43 @@ def build_candidate_rule(feature, metrics):
     }
 
 
-def suggest_rules_from_metrics(feature_metrics):
+def suggest_rules_from_metrics(
+    feature_metrics,
+    excluded_features=None,
+    minimum_absolute_correlation=0.03,
+):
     """
     Suggest preliminary argumentation rules from dataset-level metrics.
 
-    Output is intentionally shaped like approved argument rules,
-    so it can later be reviewed and used by the rule engine.
+    Filters out:
+    - index-like columns
+    - excluded/sensitive features
+    - very weak empirical relationships
     """
+
+    if excluded_features is None:
+        excluded_features = []
 
     suggested_rules = {}
 
     for feature, metrics in feature_metrics.items():
+        if feature in excluded_features:
+            continue
+
+        if feature.lower().startswith("unnamed"):
+            continue
+
+        if metrics["absolute_correlation"] is None:
+            continue
+
+        if metrics["absolute_correlation"] < minimum_absolute_correlation:
+            continue
+
         candidate_rule = build_candidate_rule(feature, metrics)
 
         if candidate_rule is not None:
+            candidate_rule["rule_quality"] = classify_strength(
+                metrics["absolute_correlation"]
+            )
             suggested_rules[feature] = candidate_rule
-
     return suggested_rules

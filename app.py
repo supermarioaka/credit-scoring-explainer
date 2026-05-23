@@ -2,172 +2,246 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.ai_explainer import generate_plain_language_explanation
-from src.modeling import load_model, predict_default_probability
-from src.reasoning_engine import evaluate_application
-from src.reporting import generate_case_summary
-from src.audit import generate_audit_trail
-from src.counterfactual import generate_counterfactuals
-from src.feature_metrics import compute_feature_metrics
-from src.rule_suggester import suggest_rules_from_metrics
+from src.generic_rule_pipeline import (
+    analyze_dataset_for_argument_rules,
+    evaluate_applicant_with_generated_rules,
+)
 
 
-st.set_page_config(page_title="Credit Scoring Explainer", page_icon="🏦", layout="wide")
-
-model = load_model()
+st.set_page_config(
+    page_title="Credit Scoring Explainer",
+    page_icon="🏦",
+    layout="wide",
+)
 
 st.title("🏦 Credit Scoring Explainer")
 st.write(
-    "A thesis-oriented app for explainable and auditable credit scoring decisions."
+    "A generic explainable credit-scoring system that turns dataset patterns "
+    "into candidate argumentation rules and auditable applicant explanations."
 )
 
+
 # ------------------------------------------------------------
-# Dataset Analysis Layer
+# Helper functions
 # ------------------------------------------------------------
 
-st.header("Dataset Analysis")
+
+def count_rule_quality(suggested_rules):
+    counts = {}
+
+    for rule in suggested_rules.values():
+        quality = rule.get("rule_quality", "Unknown")
+        counts[quality] = counts.get(quality, 0) + 1
+
+    return counts
+
+
+def make_readable_feature_name(feature):
+    return (
+        feature.replace("_", " ")
+        .replace("-", " ")
+        .replace("NumberOf", "Number of ")
+        .replace("Times", " Times")
+        .replace("Days", " Days")
+    )
+
+
+# ------------------------------------------------------------
+# 1. Dataset Upload and Analysis
+# ------------------------------------------------------------
+
+st.header("1. Upload & Analyze Dataset")
 
 uploaded_file = st.file_uploader(
-    "Optional: upload a dataset for diagnostic rule analysis",
+    "Upload a CSV dataset",
     type=["csv"],
 )
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
 else:
+    st.info("No dataset uploaded. Using the default credit dataset.")
     df = pd.read_csv("data/cs-training.csv")
 
-target_column = st.selectbox(
-    "Select target column",
+st.write("Dataset preview:")
+st.dataframe(df.head(), width="stretch")
+
+risk_outcome_column = st.selectbox(
+    "Select the risk outcome column",
     df.columns,
     index=list(df.columns).index("SeriousDlqin2yrs")
     if "SeriousDlqin2yrs" in df.columns
     else 0,
+    help=(
+        "This is the column that represents the outcome we want to explain, "
+        "for example default, bad loan, fraud, churn, or another risk event."
+    ),
 )
 
-feature_metrics = compute_feature_metrics(df, target_column)
-suggested_rules = suggest_rules_from_metrics(feature_metrics)
-
-with st.expander("Show Feature Metrics"):
-    st.write(feature_metrics)
-
-with st.expander("Show Suggested Argumentation Rules"):
-    st.write(suggested_rules)
-
-
-# ------------------------------------------------------------
-# Applicant Input Layer
-# ------------------------------------------------------------
-
-st.sidebar.header("Applicant Information")
-
-credit_utilization = st.sidebar.number_input(
-    "Credit Utilization", min_value=0.0, max_value=2.0, value=0.58
-)
-
-age = st.sidebar.number_input("Age", min_value=18, max_value=100, value=35)
-
-debt_ratio = st.sidebar.number_input(
-    "Debt Ratio", min_value=0.0, max_value=5.0, value=0.42
-)
-
-monthly_income = st.sidebar.number_input("Monthly Income", min_value=0, value=2333)
-
-late_payments = st.sidebar.number_input(
-    "Number of 90+ Days Late Payments", min_value=0, value=1
-)
-
-
-if st.sidebar.button("Analyze Applicant"):
-    applicant_data = {
-        "RevolvingUtilizationOfUnsecuredLines": credit_utilization,
-        "age": age,
-        "DebtRatio": debt_ratio,
-        "MonthlyIncome": monthly_income,
-        "NumberOfTimes90DaysLate": late_payments,
-    }
-
-    result = evaluate_application(model, applicant_data)
-    summary = generate_case_summary(result)
-    ai_explanation = generate_plain_language_explanation(summary)
-    probability = result["probability_of_default"]
-    decision = result["policy_decision"]
-    argumentation_risk_signal = result["argumentation_risk_signal"]
-
-    approve_arguments = result["approve_arguments"]
-    reject_arguments = result["reject_arguments"]
-
-    approve_total = result["approve_total"]
-    reject_total = result["reject_total"]
-
-    why = result["why_explanation"]
-    why_not = result["why_not_explanation"]
-
-    audit_steps = generate_audit_trail(
-        applicant_data, probability, decision, approve_total, reject_total
-    )
-
-    counterfactual_suggestions = generate_counterfactuals(
-        applicant_data, model, predict_default_probability
-    )
-
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Overview", "Arguments", "Counterfactuals", "Audit Trail"]
-    )
-
-    # ------------------------------------------------------------
-    # Tab 1: Overview
-    # ------------------------------------------------------------
-
-    with tab1:
-        st.subheader("Decision Overview")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric("Predicted Default Probability", f"{probability:.2%}")
-
-        with col2:
-            st.metric("Decision", decision)
-            st.metric("Argumentation Risk Signal", argumentation_risk_signal)
-
-        gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=probability * 100,
-                title={"text": "Default Risk (%)"},
-                gauge={
-                    "axis": {"range": [0, 100]},
-                    "steps": [
-                        {"range": [0, 10], "color": "lightgreen"},
-                        {"range": [10, 30], "color": "khaki"},
-                        {"range": [30, 100], "color": "lightcoral"},
-                    ],
-                    "threshold": {
-                        "line": {"color": "red", "width": 4},
-                        "thickness": 0.75,
-                        "value": probability * 100,
-                    },
-                },
-            )
+if st.button("Analyze Dataset"):
+    with st.spinner("Analyzing dataset and generating candidate rules..."):
+        analysis_result = analyze_dataset_for_argument_rules(
+            df=df,
+            target_column=risk_outcome_column,
         )
 
-        st.plotly_chart(gauge, width="stretch")
+    st.session_state["analysis_result"] = analysis_result
+    st.session_state["risk_outcome_column"] = risk_outcome_column
 
-        st.subheader("WHY Explanation")
-        st.info(why)
 
-        st.subheader("WHY-NOT Explanation")
-        st.warning(why_not)
+# ------------------------------------------------------------
+# 2. Rule Summary
+# ------------------------------------------------------------
 
-        st.subheader("AI Plain-Language Explanation")
-        st.info(ai_explanation)
+if "analysis_result" in st.session_state:
+    analysis_result = st.session_state["analysis_result"]
+
+    suggested_rules = analysis_result["suggested_rules"]
+    interpreted_rules = analysis_result["interpreted_rules"]
+    validation = analysis_result["validation"]
+    llm_analysis = analysis_result["llm_analysis"]
+
+    st.header("2. Dataset Rule Summary")
+
+    rule_quality_counts = count_rule_quality(suggested_rules)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Candidate Rules", len(suggested_rules))
+
+    with col2:
+        st.metric("Validation", "Passed" if validation["is_valid"] else "Failed")
+
+    with col3:
+        st.metric("Outcome Column", st.session_state["risk_outcome_column"])
+
+    st.subheader("Rule Quality Distribution")
+
+    if rule_quality_counts:
+        quality_df = pd.DataFrame(
+            {
+                "Rule quality": list(rule_quality_counts.keys()),
+                "Count": list(rule_quality_counts.values()),
+            }
+        )
+
+        st.dataframe(quality_df, width="stretch")
+
+        quality_chart = go.Figure(
+            data=[
+                go.Bar(
+                    x=quality_df["Rule quality"],
+                    y=quality_df["Count"],
+                )
+            ]
+        )
+
+        quality_chart.update_layout(
+            title="Candidate Rule Quality Distribution",
+            yaxis_title="Number of rules",
+        )
+
+        st.plotly_chart(quality_chart, width="stretch")
+    else:
+        st.warning("No candidate rules were generated.")
+
+    st.subheader("Governance Status")
+
+    st.info(
+        "The generated rules are candidate explanation rules. "
+        "They are not automatically approved decision rules. "
+        "They should be reviewed for financial meaning, fairness, stability, "
+        "and regulatory acceptability."
+    )
+
+    if "unavailable" in llm_analysis["llm_status"].lower():
+        st.warning(
+            "LLM governance analysis is currently unavailable. "
+            "The system is using template-based governance explanations instead."
+        )
+    elif "error" in llm_analysis["llm_status"].lower():
+        st.warning(
+            "LLM governance analysis could not be generated. "
+            "The system is using fallback governance explanations."
+        )
+    else:
+        st.success("LLM governance analysis generated successfully.")
+        st.write(llm_analysis["llm_explanation"])
+
     # ------------------------------------------------------------
-    # Tab 2: Arguments
+    # 3. Applicant Profile
     # ------------------------------------------------------------
 
-    with tab2:
-        st.subheader("Argument Strength Summary")
+    st.header("3. Applicant Profile")
+
+    st.write(
+        "Enter applicant values for the features used by the generated candidate rules."
+    )
+
+    applicant_data = {}
+
+    for feature, rule in suggested_rules.items():
+        readable_name = make_readable_feature_name(feature)
+
+        with st.container(border=True):
+            st.markdown(f"**{readable_name}**")
+            st.caption(
+                f"Risk rule: value is {rule['risk_direction']} "
+                f"{rule['threshold']} | Rule quality: {rule['rule_quality']}"
+            )
+
+            applicant_data[feature] = st.number_input(
+                label=f"Applicant value for {readable_name}",
+                value=float(rule["threshold"]),
+                key=f"input_{feature}",
+            )
+
+    if st.button("Evaluate Applicant"):
+        try:
+            applicant_result = evaluate_applicant_with_generated_rules(
+                applicant_data=applicant_data,
+                rule_set=suggested_rules,
+            )
+
+            st.session_state["applicant_result"] = applicant_result
+
+        except ValueError as error:
+            st.error(str(error))
+
+
+# ------------------------------------------------------------
+# 4. Applicant Decision and Explanation
+# ------------------------------------------------------------
+
+if "applicant_result" in st.session_state:
+    applicant_result = st.session_state["applicant_result"]
+
+    approve_arguments = applicant_result["approve_arguments"]
+    reject_arguments = applicant_result["reject_arguments"]
+    approve_total = applicant_result["approve_total"]
+    reject_total = applicant_result["reject_total"]
+    argument_decision = applicant_result["argument_decision"]
+
+    st.header("4. Decision & Explanation")
+
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Overview", "Arguments", "Audit Explanation", "Advanced Details"]
+    )
+
+    with tab1:
+        st.subheader("Argument-Based Decision Overview")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Approval Strength", f"{approve_total:.3f}")
+
+        with col2:
+            st.metric("Rejection Strength", f"{reject_total:.3f}")
+
+        with col3:
+            st.metric("Argument-Based Decision", argument_decision)
 
         strength_chart = go.Figure(
             data=[
@@ -185,79 +259,42 @@ if st.sidebar.button("Analyze Applicant"):
 
         st.plotly_chart(strength_chart, width="stretch")
 
-        col3, col4 = st.columns(2)
-
-        with col3:
-            st.metric("Total Approval Strength", f"{approve_total:.3f}")
-
-        with col4:
-            st.metric("Total Rejection Strength", f"{reject_total:.3f}")
-
-        argument_graph = result["argument_graph"]
-
-        st.subheader("Argument Graph Summary")
-
-        col_a, col_b, col_c = st.columns(3)
-
-        with col_a:
-            st.metric("Arguments", len(argument_graph["nodes"]))
-
-        with col_b:
-            st.metric("Attack Relations", len(argument_graph["attacks"]))
-
-        with col_c:
-            st.metric("Support Relations", len(argument_graph["supports"]))
-
-        st.subheader("Argument Relations")
-
-        relations = []
-
-        for attack in argument_graph["attacks"]:
-            relations.append(
-                {
-                    "From": attack["from"],
-                    "To": attack["to"],
-                    "Relation": "Attack",
-                    "Reason": attack["reason"],
-                }
-            )
-
-        for support in argument_graph["supports"]:
-            relations.append(
-                {
-                    "From": support["from"],
-                    "To": support["to"],
-                    "Relation": "Support",
-                    "Reason": support["reason"],
-                }
-            )
-
-        st.dataframe(relations, width="stretch")
-
-        st.subheader("Argumentation Risk Signal")
-        st.info(argumentation_risk_signal)
-
         if reject_total > approve_total:
-            st.error(
-                "Rejection-supporting evidence dominates. "
-                "This is an audit signal, not a separate final decision."
-            )
+            st.error("Rejection-supporting arguments dominate.")
         elif approve_total > reject_total:
-            st.success(
-                "Approval-supporting evidence dominates. "
-                "This supports the policy decision but does not replace it."
-            )
+            st.success("Approval-supporting arguments dominate.")
         else:
-            st.warning(
-                "Approval and rejection arguments are balanced. "
-                "This indicates an ambiguous reasoning profile."
-            )
+            st.warning("Approval and rejection arguments are balanced.")
 
-        st.subheader("Arguments Supporting Approval")
+    with tab2:
+        st.subheader("Main Approval Arguments")
+
+        if not approve_arguments:
+            st.info("No approval-supporting arguments generated.")
 
         for argument in approve_arguments:
             st.success(f"{argument['name']} | Strength: {argument['strength']:.3f}")
+
             st.write(argument["text"])
+
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                st.metric("Base Strength", f"{argument['base_strength']:.3f}")
+
+            with col_b:
+                st.metric(
+                    "Activation Strength",
+                    f"{argument['activation_strength']:.3f}",
+                )
+
+            with col_c:
+                st.metric(
+                    "Distance",
+                    f"{argument['distance_from_threshold']:.3f}",
+                )
+
+            st.caption(argument["strength_formula"])
 
             st.markdown("**Financial meaning**")
             st.write(argument["financial_meaning"])
@@ -267,11 +304,34 @@ if st.sidebar.button("Analyze Applicant"):
 
             st.divider()
 
-        st.subheader("Arguments Supporting Rejection")
+        st.subheader("Main Rejection Arguments")
+
+        if not reject_arguments:
+            st.info("No rejection-supporting arguments generated.")
 
         for argument in reject_arguments:
             st.error(f"{argument['name']} | Strength: {argument['strength']:.3f}")
+
             st.write(argument["text"])
+
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                st.metric("Base Strength", f"{argument['base_strength']:.3f}")
+
+            with col_b:
+                st.metric(
+                    "Activation Strength",
+                    f"{argument['activation_strength']:.3f}",
+                )
+
+            with col_c:
+                st.metric(
+                    "Distance",
+                    f"{argument['distance_from_threshold']:.3f}",
+                )
+
+            st.caption(argument["strength_formula"])
 
             st.markdown("**Financial meaning**")
             st.write(argument["financial_meaning"])
@@ -281,86 +341,43 @@ if st.sidebar.button("Analyze Applicant"):
 
             st.divider()
 
-    # ------------------------------------------------------------
-    # Tab 3: Counterfactuals
-    # ------------------------------------------------------------
-
     with tab3:
-        st.subheader("Counterfactual Improvement Suggestions")
+        st.subheader("Audit Explanation")
 
-        for suggestion in counterfactual_suggestions:
-            st.markdown(f"### {suggestion['title']}")
-            st.write(f"**Current value:** {suggestion['current']}")
-            st.write(f"**Borderline target value:** {suggestion['target']}")
-            st.write(f"**Required change:** {suggestion['change']}")
-            st.info(suggestion["meaning"])
-
-            if suggestion["new_approve_total"] is not None:
-                col5, col6 = st.columns(2)
-
-                with col5:
-                    st.metric(
-                        "New Approval Strength",
-                        f"{suggestion['new_approve_total']:.3f}",
-                        f"{suggestion['approval_change']:+.3f}",
-                    )
-
-                with col6:
-                    st.metric(
-                        "New Rejection Strength",
-                        f"{suggestion['new_reject_total']:.3f}",
-                        f"{suggestion['rejection_change']:+.3f}",
-                    )
-
-                col7, col8 = st.columns(2)
-
-                with col7:
-                    st.metric(
-                        "New Predicted Default Probability",
-                        f"{suggestion['new_probability']:.2%}",
-                        f"{suggestion['probability_change']:+.2%}",
-                    )
-
-                with col8:
-                    st.metric(
-                        "New Decision",
-                        suggestion["new_decision"],
-                    )
-
-                st.write(
-                    f"Original decision: **{suggestion['original_decision']}** → "
-                    f"New decision after change: **{suggestion['new_decision']}**"
-                )
-
-                if suggestion["new_reject_total"] > suggestion["new_approve_total"]:
-                    st.warning(
-                        "Even after this change, rejection arguments remain stronger."
-                    )
-                elif suggestion["new_approve_total"] > suggestion["new_reject_total"]:
-                    st.success("After this change, approval arguments become stronger.")
-                else:
-                    st.info(
-                        "After this change, approval and rejection arguments become balanced."
-                    )
-
-    # ------------------------------------------------------------
-    # Tab 4: Audit Trail
-    # ------------------------------------------------------------
-
-    with tab4:
-        st.subheader("Audit Trail")
-
-        for step in audit_steps:
-            st.write(step)
-
-        st.subheader("Thesis Interpretation")
         st.write(
-            "The predictive layer estimates the probability of default. "
-            "The business decision layer converts this probability into Approve, Review, or Reject. "
-            "The argumentation layer translates applicant characteristics into structured arguments. "
-            "The counterfactual layer tests borderline changes and shows how each change affects both argument strength totals and the model's predicted probability. "
-            "The audit trail records the reasoning path from input data to final decision."
+            "The system analyzes the dataset and proposes candidate argumentation "
+            "rules based on statistical diagnostics. Each rule is assigned a quality "
+            "label and a governance note."
         )
 
-else:
-    st.info("Enter applicant information in the sidebar and press Analyze Applicant.")
+        st.write(
+            "For the applicant, every generated rule creates either an approval-supporting "
+            "or rejection-supporting argument. The strength of each argument is computed as:"
+        )
+
+        st.code("strength = base_strength * activation_strength")
+
+        st.write(
+            "The final argument-based decision is produced by comparing the total "
+            "approval-supporting strength against the total rejection-supporting strength."
+        )
+
+        st.write(
+            "This decision should be understood as an auditable reasoning signal, "
+            "not as an automatically approved production banking decision."
+        )
+
+    with tab4:
+        st.subheader("Advanced / Developer Details")
+
+        with st.expander("Raw suggested rules"):
+            st.write(suggested_rules)
+
+        with st.expander("Raw interpreted rules"):
+            st.write(interpreted_rules)
+
+        with st.expander("Validation details"):
+            st.write(validation)
+
+        with st.expander("LLM status and explanation"):
+            st.write(llm_analysis)
