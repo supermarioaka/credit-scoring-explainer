@@ -3,12 +3,15 @@ from sklearn.metrics import (
     confusion_matrix,
     roc_auc_score,
     classification_report,
+    roc_curve,
 )
 
 
 def evaluate_classification_model(model, X_test, y_test) -> dict:
     predictions = model.predict(X_test)
     probabilities = model.predict_proba(X_test)[:, 1]
+
+    fpr, tpr, thresholds = roc_curve(y_test, probabilities)
 
     return {
         "accuracy": accuracy_score(y_test, predictions),
@@ -19,6 +22,11 @@ def evaluate_classification_model(model, X_test, y_test) -> dict:
             predictions,
             output_dict=True,
         ),
+        "roc_curve": {
+            "false_positive_rate": fpr.tolist(),
+            "true_positive_rate": tpr.tolist(),
+            "thresholds": thresholds.tolist(),
+        },
     }
 
 
