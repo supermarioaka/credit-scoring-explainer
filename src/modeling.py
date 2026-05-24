@@ -1,9 +1,10 @@
 import joblib
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 
-MODEL_PATH = "models/credit_model.pkl"
+MODEL_PATH = str(Path(__file__).resolve().parents[1] / "models" / "credit_model.pkl")
 
 FEATURES = [
     "RevolvingUtilizationOfUnsecuredLines",
