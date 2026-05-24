@@ -480,187 +480,133 @@ def render_dataset_overview():
 
 
 def render_logistic_regression_overview():
-    validation_metrics = model_diagnostics.get("validation_metrics")
-
     intercept, coefficients = get_model_coefficients(model)
+    coefficient_strengths = model_diagnostics.get("coefficient_strengths")
 
     st.header("2. Logistic Regression Model")
 
     st.write(
-        "The predictive part of the project is a logistic regression model. "
-        "Its role is to estimate the applicant's probability of default. "
-        "After that, the probability is translated into a business decision, "
-        "and the argumentation layer explains the decision."
+        "The logistic regression model estimates the applicant's probability of default. "
+        "It is used as the predictive layer of the thesis."
     )
 
-    st.subheader("Why logistic regression is useful here")
+    st.subheader("Model formula")
 
-    st.write(
-        "Logistic regression is useful for this thesis because it is simple, "
-        "transparent, and mathematically interpretable. Instead of acting like a "
-        "black-box model, it gives a coefficient for every feature. These coefficients "
-        "show how each feature pushes the applicant toward higher or lower estimated risk."
-    )
-
-    st.write(
-        "The model first computes a linear score `z`. Then this score is converted "
-        "into a probability of default."
-    )
-
-    st.code("z = intercept + β₁x₁ + β₂x₂ + ... + βₙxₙ")
+    st.code("z = β0 + β1x1 + β2x2 + ... + βnxn")
     st.code("PD = 1 / (1 + exp(-z))")
 
-    st.subheader("How the coefficients were found")
-
     st.write(
-        "The coefficients were learned from the training data. During training, "
-        "logistic regression searched for the coefficient values that best separate "
-        "default cases from non-default cases. After training, each coefficient tells "
-        "us the direction and relative importance of a feature."
+        "The model first calculates a linear score `z`. "
+        "Then it converts this score into a probability of default."
     )
 
-    st.info(
-        "Positive coefficient → increases the estimated probability of default. "
-        "Negative coefficient → decreases the estimated probability of default."
-    )
+    col1, col2 = st.columns(2)
 
-    st.subheader("Model coefficients")
+    with col1:
+        st.metric("Intercept", f"{intercept:.4f}")
 
-    st.metric("Intercept", f"{intercept:.4f}")
+    with col2:
+        st.info(
+            "Positive coefficient → increases estimated default risk. "
+            "Negative coefficient → decreases estimated default risk."
+        )
+
+    st.subheader("Fitted model coefficients")
 
     coefficient_rows = []
 
     for feature, coefficient in coefficients.items():
         if coefficient > 0:
-            direction = "Increases estimated default risk"
+            direction = "Increases default risk"
         else:
-            direction = "Decreases estimated default risk"
+            direction = "Decreases default risk"
+
+        if feature == "age":
+            role = "Predictive model only"
+        elif feature in ARGUMENT_RULES:
+            role = "Predictive model + explanation layer"
+        else:
+            role = "Predictive model"
 
         coefficient_rows.append(
             {
                 "Feature": format_feature_name(feature),
-                "Coefficient": round(coefficient, 4),
+                "Coefficient": round(coefficient, 6),
+                "Absolute size": round(abs(coefficient), 6),
                 "Direction": direction,
+                "Role in thesis": role,
             }
         )
 
-    st.table(pd.DataFrame(coefficient_rows))
+    coefficient_df = pd.DataFrame(coefficient_rows)
+    coefficient_df = coefficient_df.sort_values(
+        by="Absolute size",
+        ascending=False,
+    )
+
+    st.dataframe(coefficient_df, width="stretch", hide_index=True)
+
+    coefficient_chart = create_bar_chart(
+        title="Logistic Regression Coefficients",
+        x_values=coefficient_df["Feature"].tolist(),
+        y_values=coefficient_df["Coefficient"].tolist(),
+        yaxis_title="Coefficient value",
+    )
+
+    st.plotly_chart(coefficient_chart, width="stretch")
+
+    st.subheader("Simple interpretation")
 
     st.write(
-        "The strongest positive coefficient is for **Credit Utilization**. "
-        "This means that higher use of available unsecured credit is strongly associated "
-        "with higher estimated default risk. The variable **90+ Days Late Payments** also "
-        "has a positive coefficient, which makes financial sense because serious late "
-        "payments are a direct signal of repayment difficulty."
+        "**Credit Utilization** and **90+ Days Late Payments** are the main "
+        "risk-increasing variables in the fitted model."
     )
 
     st.write(
-        "**Age**, **Debt Ratio**, and **Monthly Income** have negative coefficients in "
-        "this fitted model. A negative coefficient means that, after preprocessing and "
-        "given the other variables in the model, larger values move the linear score "
-        "downward and reduce the estimated probability of default."
+        "**Age** is used by the predictive model, but it is not used in the "
+        "argumentation explanation layer. This keeps the explanation focused on "
+        "financial reasons."
     )
-
-    st.subheader("Model outcome")
-
-    if validation_metrics is not None:
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.metric("Accuracy", f"{validation_metrics['accuracy']:.4f}")
-
-        with col2:
-            st.metric("ROC-AUC", f"{validation_metrics['roc_auc']:.4f}")
-
-        st.write(
-            "The model achieved high accuracy, but in credit scoring we should not rely "
-            "only on accuracy. Default cases are much fewer than non-default cases, so a "
-            "model can look accurate while still missing some risky applicants."
-        )
-
-        st.write(
-            "For this reason, ROC-AUC is important. ROC-AUC measures how well the model "
-            "ranks higher-risk applicants above lower-risk applicants. A value close to "
-            "0.5 would be close to random guessing. A value around 0.82 means the model "
-            "has useful risk-ranking ability."
-        )
-
-        roc_chart = create_roc_curve_chart(validation_metrics)
-
-        if roc_chart is not None:
-            st.plotly_chart(roc_chart, width="stretch")
-
-        st.markdown("### Confusion matrix")
-
-        confusion_matrix = validation_metrics["confusion_matrix"]
-
-        true_non_default = confusion_matrix[0][0]
-        false_default = confusion_matrix[0][1]
-        false_non_default = confusion_matrix[1][0]
-        true_default = confusion_matrix[1][1]
-
-        confusion_df = pd.DataFrame(
-            confusion_matrix,
-            index=["Actual non-default", "Actual default"],
-            columns=["Predicted non-default", "Predicted default"],
-        )
-
-        st.table(confusion_df)
-
-        st.write(
-            "The confusion matrix shows the model's test-set predictions. "
-            f"It correctly identified **{true_non_default:,} non-default applicants** "
-            f"and **{true_default:,} default applicants**. It also produced "
-            f"**{false_default:,} false alarms**, where non-default applicants were "
-            f"predicted as default, and **{false_non_default:,} missed defaults**, "
-            f"where actual default applicants were predicted as non-default."
-        )
-
-        st.warning(
-            "This result is realistic for credit scoring. The model is useful, but it is "
-            "not perfect. That is why the thesis does not stop at prediction. It adds an "
-            "argumentation layer to make the decision path clearer and auditable."
-        )
-
-    st.subheader("Connection with the thesis explanation layer")
 
     st.write(
-        "The logistic regression model gives us two important outputs for the thesis. "
-        "First, it gives the probability of default. Second, it gives coefficients that "
-        "can be used to quantify the strength of financial arguments."
+        "**Debt Ratio** and **Monthly Income** are included as financial variables. "
+        "Their effect is read through the fitted coefficient and then connected to "
+        "the explanation layer through argument strengths."
     )
 
-    st.code("base_strength = |β_j| / max(|β|)")
+    st.subheader("Connection with argument strength")
 
     st.write(
-        "This is the bridge between the statistical model and the argumentation system. "
-        "The model estimates risk, while the explanation layer turns selected financial "
-        "signals into structured arguments for approval or rejection."
+        "The thesis connects logistic regression with argumentation by using the "
+        "absolute size of each coefficient as the base strength of an argument."
     )
 
-    coefficient_strengths = model_diagnostics.get("coefficient_strengths")
+    st.code("base_strength_j = |β_j| / max(|β|)")
 
     if coefficient_strengths is not None:
         strength_rows = []
 
         for feature, details in coefficient_strengths["normalized_strengths"].items():
+            rule = ARGUMENT_RULES[feature]
+
             strength_rows.append(
                 {
                     "Explanation feature": format_feature_name(feature),
-                    "Coefficient": round(details["coefficient"], 4),
-                    "Normalized base strength": round(
-                        details["normalized_strength"],
-                        4,
-                    ),
+                    "Coefficient": round(details["coefficient"], 6),
+                    "Base strength": round(details["normalized_strength"], 3),
+                    "Rule threshold": rule["threshold"],
+                    "Risk direction": rule["risk_direction"],
                 }
             )
 
-        st.table(pd.DataFrame(strength_rows))
+        strength_df = pd.DataFrame(strength_rows)
 
-        st.caption(
-            "Only financially interpretable explanation features are shown here. "
-            "Age is used by the predictive model, but excluded from the argumentation layer."
-        )
+        st.dataframe(strength_df, width="stretch", hide_index=True)
+
+    st.success(
+        "In short: logistic regression predicts the probability of default, "
+        "and the argumentation layer explains the financial reasons behind the case."
+    )
 
 
 def render_applicant_form():
