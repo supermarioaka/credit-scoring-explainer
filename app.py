@@ -7,7 +7,6 @@ from src.modeling import load_model, get_model_coefficients
 from src.reporting import create_credit_explanation_report
 from src.model_diagnostics import create_model_diagnostics_report
 
-
 # ------------------------------------------------------------
 # Page configuration
 # ------------------------------------------------------------
@@ -112,6 +111,44 @@ def create_roc_curve_chart(validation_metrics: dict):
         xaxis_title="False Positive Rate",
         yaxis_title="True Positive Rate",
         margin=dict(l=20, r=20, t=60, b=20),
+    )
+
+    return chart
+
+
+def create_coefficient_chart(coefficient_df: pd.DataFrame):
+    chart_df = coefficient_df.copy()
+    chart_df["Absolute coefficient"] = chart_df["Coefficient"].abs()
+    chart_df = chart_df.sort_values(
+        by="Absolute coefficient",
+        ascending=True,
+    )
+
+    chart = go.Figure()
+
+    chart.add_trace(
+        go.Bar(
+            x=chart_df["Coefficient"],
+            y=chart_df["Feature"],
+            orientation="h",
+            text=chart_df["Coefficient"].round(4),
+            textposition="auto",
+            hovertemplate=("<b>%{y}</b><br>Coefficient: %{x:.4f}<br><extra></extra>"),
+        )
+    )
+
+    chart.add_vline(
+        x=0,
+        line_width=1,
+        line_dash="dash",
+    )
+
+    chart.update_layout(
+        title="Fitted Logistic Regression Coefficients",
+        xaxis_title="Coefficient value",
+        yaxis_title="Feature",
+        margin=dict(l=20, r=20, t=60, b=20),
+        height=420,
     )
 
     return chart
@@ -486,102 +523,117 @@ def render_logistic_regression_overview():
     st.header("2. Logistic Regression Model")
 
     st.write(
-        "The logistic regression model estimates the applicant's probability of default. "
-        "It is used as the predictive layer of the thesis."
+        "This is the predictive layer of the system. The fitted model estimates "
+        "the applicant's probability of default."
     )
 
-    st.subheader("Model formula")
+    st.subheader("Model form")
 
-    st.code("z = β0 + β1x1 + β2x2 + ... + βnxn")
-    st.code("PD = 1 / (1 + exp(-z))")
+    st.latex(r"z = \beta_0 + \beta_1x_1 + \beta_2x_2 + \cdots + \beta_nx_n")
+
+    st.latex(r"PD = \frac{1}{1 + e^{-z}}")
 
     st.write(
-        "The model first calculates a linear score `z`. "
-        "Then it converts this score into a probability of default."
+        "The model first calculates the linear score, then converts it into a "
+        "probability of default."
     )
 
-    col1, col2 = st.columns(2)
+    st.subheader("Fitted model from our dataset")
 
-    with col1:
-        st.metric("Intercept", f"{intercept:.4f}")
+    feature_order = [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfTimes90DaysLate",
+    ]
 
-    with col2:
-        st.info(
-            "Positive coefficient → increases estimated default risk. "
-            "Negative coefficient → decreases estimated default risk."
-        )
+    feature_symbols = {
+        "RevolvingUtilizationOfUnsecuredLines": r"x_{\mathrm{utilization}}",
+        "age": r"x_{\mathrm{age}}",
+        "DebtRatio": r"x_{\mathrm{debt}}",
+        "MonthlyIncome": r"x_{\mathrm{income}}",
+        "NumberOfTimes90DaysLate": r"x_{\mathrm{90dayslate}}",
+    }
 
-    st.subheader("Fitted model coefficients")
+    fitted_terms = []
+
+    for feature in feature_order:
+        coefficient = coefficients[feature]
+        sign = "+" if coefficient >= 0 else "-"
+        fitted_terms.append(f"{sign} {abs(coefficient):.4f}{feature_symbols[feature]}")
+
+    fitted_model = f"z = {intercept:.4f} " + " ".join(fitted_terms)
+
+    st.latex(fitted_model)
 
     coefficient_rows = []
 
-    for feature, coefficient in coefficients.items():
+    for feature in feature_order:
+        coefficient = coefficients[feature]
+
         if coefficient > 0:
             direction = "Increases default risk"
         else:
             direction = "Decreases default risk"
 
         if feature == "age":
-            role = "Predictive model only"
-        elif feature in ARGUMENT_RULES:
-            role = "Predictive model + explanation layer"
+            role = "Prediction only"
         else:
-            role = "Predictive model"
+            role = "Prediction + explanation"
 
         coefficient_rows.append(
             {
                 "Feature": format_feature_name(feature),
                 "Coefficient": round(coefficient, 6),
-                "Absolute size": round(abs(coefficient), 6),
                 "Direction": direction,
-                "Role in thesis": role,
+                "Role": role,
             }
         )
 
     coefficient_df = pd.DataFrame(coefficient_rows)
-    coefficient_df = coefficient_df.sort_values(
-        by="Absolute size",
-        ascending=False,
-    )
-
-    st.dataframe(coefficient_df, width="stretch", hide_index=True)
-
-    coefficient_chart = create_bar_chart(
-        title="Logistic Regression Coefficients",
-        x_values=coefficient_df["Feature"].tolist(),
-        y_values=coefficient_df["Coefficient"].tolist(),
-        yaxis_title="Coefficient value",
-    )
-
-    st.plotly_chart(coefficient_chart, width="stretch")
-
-    st.subheader("Simple interpretation")
 
     st.write(
-        "**Credit Utilization** and **90+ Days Late Payments** are the main "
-        "risk-increasing variables in the fitted model."
+        "The graph below shows how each fitted coefficient affects the estimated "
+        "probability of default."
     )
 
     st.write(
-        "**Age** is used by the predictive model, but it is not used in the "
-        "argumentation explanation layer. This keeps the explanation focused on "
+        "**Positive coefficients** increase estimated default risk, while "
+        "**negative coefficients** decrease estimated default risk."
+    )
+
+    st.write(
+        "Based on the fitted model, **Credit Utilization** and "
+        "**90+ Days Late Payments** are the strongest risk-increasing signals. "
+        "**Age** is included in the predictive model, but it is excluded from the "
+        "argumentation explanation layer so that the explanation focuses only on "
         "financial reasons."
     )
 
-    st.write(
-        "**Debt Ratio** and **Monthly Income** are included as financial variables. "
-        "Their effect is read through the fitted coefficient and then connected to "
-        "the explanation layer through argument strengths."
+    coefficient_chart = create_coefficient_chart(coefficient_df)
+
+    st.plotly_chart(coefficient_chart, width="stretch")
+
+    st.caption(
+        "Bars to the right increase estimated default risk. Bars to the left decrease "
+        "estimated default risk. Larger bars mean stronger influence in the fitted model."
     )
 
-    st.subheader("Connection with argument strength")
+    st.subheader("Connection to argument strength")
 
     st.write(
-        "The thesis connects logistic regression with argumentation by using the "
-        "absolute size of each coefficient as the base strength of an argument."
+        "The explanation layer uses only the financial variables. The fitted "
+        "coefficient of each financial feature gives the base strength of the "
+        "corresponding argument."
     )
 
-    st.code("base_strength_j = |β_j| / max(|β|)")
+    st.latex(r"S_{\mathrm{base},j} = \frac{|\beta_j|}{\max_k |\beta_k|}")
+
+    st.write(
+        "This means that the strongest financial coefficient receives base strength "
+        "equal to 1.000, and the remaining financial features are scaled relative to it."
+    )
 
     if coefficient_strengths is not None:
         strength_rows = []
@@ -591,26 +643,42 @@ def render_logistic_regression_overview():
 
             strength_rows.append(
                 {
-                    "Explanation feature": format_feature_name(feature),
+                    "Feature": format_feature_name(feature),
                     "Coefficient": round(details["coefficient"], 6),
                     "Base strength": round(details["normalized_strength"], 3),
                     "Rule threshold": rule["threshold"],
-                    "Risk direction": rule["risk_direction"],
                 }
             )
 
         strength_df = pd.DataFrame(strength_rows)
+        strength_df = strength_df.sort_values(
+            by="Base strength",
+            ascending=False,
+        )
 
         st.dataframe(strength_df, width="stretch", hide_index=True)
 
+    st.write(
+        "For each applicant, the app then compares the applicant's value with the "
+        "rule threshold. This produces the activation strength of the argument."
+    )
+
+    st.latex(r"S_j = S_{\mathrm{base},j} \times S_{\mathrm{activation},j}")
+
+    st.write(
+        "The final argument strengths are shown later in the applicant evaluation. "
+        "This keeps the model section focused on the fitted coefficients, while the "
+        "case-specific reasoning is shown only after an applicant is evaluated."
+    )
+
     st.success(
-        "In short: logistic regression predicts the probability of default, "
-        "and the argumentation layer explains the financial reasons behind the case."
+        "In short: logistic regression provides the base importance of each financial "
+        "argument, and the applicant profile activates those arguments during evaluation."
     )
 
 
 def render_applicant_form():
-    st.header("2. Applicant Profile")
+    st.header("3. Applicant Profile")
 
     st.write(
         "Enter an applicant profile below. The model will estimate the probability "
@@ -1053,62 +1121,134 @@ def render_diagnostics_and_audit(report: dict):
 # Main app layout
 # ------------------------------------------------------------
 
-st.title("🏦 Credit Scoring Explainer")
+SECTIONS = [
+    "Preprocessing",
+    "Logistic Regression",
+    "Applicant Profile",
+]
 
-st.write(
-    "A thesis-oriented system for credit-scoring explanations. "
-    "It combines logistic regression, business decision thresholds, "
-    "argumentation-based reasoning, WHY / WHY-NOT explanations, "
-    "counterfactual analysis, and auditability."
-)
 
-with st.sidebar:
-    with st.expander("1. Dataset and Methodology Overview", expanded=False):
+def go_to_section(section_name: str):
+    st.session_state["selected_section"] = section_name
+    st.rerun()
+
+
+def render_home_page():
+    st.title("🏦 Credit Scoring Explainer")
+
+    st.write(
+        "This app demonstrates the full thesis workflow: preprocessing, "
+        "logistic regression, and argument-based applicant evaluation."
+    )
+
+    st.markdown("### What would you like to see?")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.subheader("1. Preprocessing")
+        st.write(
+            "See how the dataset was split, cleaned, winsorized, and standardized."
+        )
+
+        if st.button("Open Preprocessing", width="stretch"):
+            go_to_section("Preprocessing")
+
+    with col2:
+        st.subheader("2. Logistic Regression")
+        st.write(
+            "See the fitted model, coefficients, and connection to argument strength."
+        )
+
+        if st.button("Open Logistic Regression", width="stretch"):
+            go_to_section("Logistic Regression")
+
+    with col3:
+        st.subheader("3. Applicant Profile")
+        st.write("Enter applicant values and generate the WHY / WHY-NOT explanation.")
+
+        if st.button("Open Applicant Profile", width="stretch"):
+            go_to_section("Applicant Profile")
+
+
+def render_applicant_profile_page():
+    submitted, explanation_applicant_data, model_applicant_data = (
+        render_applicant_form()
+    )
+
+    if submitted:
+        report = create_credit_explanation_report(
+            explanation_applicant_data=explanation_applicant_data,
+            model_applicant_data=model_applicant_data,
+            model=model,
+        )
+
+        st.divider()
+
+        st.header("Applicant Evaluation Results")
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(
+            [
+                "Decision Overview",
+                "Predictive Layer",
+                "Argumentation Layer",
+                "Counterfactuals",
+                "Diagnostics & Audit",
+            ]
+        )
+
+        with tab1:
+            render_decision_overview(report)
+
+        with tab2:
+            render_predictive_layer(report)
+
+        with tab3:
+            render_argumentation_layer(report)
+
+        with tab4:
+            render_counterfactuals(report)
+
+        with tab5:
+            render_diagnostics_and_audit(report)
+
+    else:
+        st.info(
+            "Enter or adjust the applicant values above and press "
+            "**Evaluate Applicant** to generate the full explanation report."
+        )
+
+
+if "selected_section" not in st.session_state:
+    st.session_state["selected_section"] = None
+
+
+if st.session_state["selected_section"] is None:
+    render_home_page()
+
+else:
+    with st.sidebar:
+        st.title("Navigation")
+
+        selected_section = st.radio(
+            "Choose section",
+            SECTIONS,
+            index=SECTIONS.index(st.session_state["selected_section"]),
+        )
+
+        st.session_state["selected_section"] = selected_section
+
+        st.divider()
+
+        if st.button("Back to home", width="stretch"):
+            st.session_state["selected_section"] = None
+            st.rerun()
+
+    if st.session_state["selected_section"] == "Preprocessing":
         render_dataset_overview()
 
-render_logistic_regression_overview()
+    elif st.session_state["selected_section"] == "Logistic Regression":
+        render_logistic_regression_overview()
 
-st.divider()
-
-submitted, explanation_applicant_data, model_applicant_data = render_applicant_form()
-
-if submitted:
-    report = create_credit_explanation_report(
-        explanation_applicant_data=explanation_applicant_data,
-        model_applicant_data=model_applicant_data,
-        model=model,
-    )
-
-    st.divider()
-
-    st.header("3. Applicant Evaluation Results")
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        [
-            "Decision Overview",
-            "Predictive Layer",
-            "Argumentation Layer",
-            "Counterfactuals",
-            "Diagnostics & Audit",
-        ]
-    )
-
-    with tab1:
-        render_decision_overview(report)
-
-    with tab2:
-        render_predictive_layer(report)
-
-    with tab3:
-        render_argumentation_layer(report)
-
-    with tab4:
-        render_counterfactuals(report)
-
-    with tab5:
-        render_diagnostics_and_audit(report)
-else:
-    st.info(
-        "Enter or adjust the applicant values above and press "
-        "**Evaluate Applicant** to generate the full explanation report."
-    )
+    elif st.session_state["selected_section"] == "Applicant Profile":
+        render_applicant_profile_page()
