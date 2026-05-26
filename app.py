@@ -154,6 +154,100 @@ def create_coefficient_chart(coefficient_df: pd.DataFrame):
     return chart
 
 
+def create_pd_policy_gauge(probability_of_default: float):
+    """
+    Creates a half-circle gauge showing the applicant's probability of default
+    inside the business policy zones.
+    """
+
+    pd_percent = probability_of_default * 100
+
+    chart = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=pd_percent,
+            number={"suffix": "%", "valueformat": ".2f"},
+            title={"text": "Probability of Default"},
+            gauge={
+                "axis": {
+                    "range": [0, 50],
+                    "tickmode": "array",
+                    "tickvals": [0, 10, 30, 50],
+                    "ticktext": ["0%", "10%", "30%", "50%"],
+                },
+                "bar": {"color": "#1f77b4", "thickness": 0.22},
+                "steps": [
+                    {"range": [0, 10], "color": "#d9f2d9"},
+                    {"range": [10, 30], "color": "#fff2cc"},
+                    {"range": [30, 50], "color": "#f4cccc"},
+                ],
+                "threshold": {
+                    "line": {"color": "#1f77b4", "width": 5},
+                    "thickness": 0.85,
+                    "value": pd_percent,
+                },
+            },
+        )
+    )
+
+    chart.update_layout(
+        height=330,
+        margin=dict(l=20, r=20, t=60, b=20),
+    )
+
+    return chart
+
+
+def create_argument_strength_donut(approve_total: float, reject_total: float):
+    """
+    Creates a clean donut chart showing the strength balance between
+    approval-supporting and rejection-supporting arguments.
+    """
+
+    chart = go.Figure(
+        data=[
+            go.Pie(
+                labels=["Approval strength", "Rejection strength"],
+                values=[approve_total, reject_total],
+                hole=0.62,
+                textinfo="label+percent",
+                hovertemplate="<b>%{label}</b><br>Strength: %{value:.3f}<extra></extra>",
+                marker=dict(colors=["#2e7d32", "#b91c1c"]),
+            )
+        ]
+    )
+
+    chart.update_layout(
+        title="Argument Strength Balance",
+        height=360,
+        margin=dict(l=20, r=20, t=60, b=20),
+        showlegend=True,
+    )
+
+    return chart
+
+
+def get_decision_message(business_decision: str, probability_of_default: float) -> str:
+    pd_text = f"{probability_of_default:.2%}"
+
+    if business_decision == "Approve":
+        return (
+            f"The applicant is in the **Approve** zone because the estimated "
+            f"probability of default is **{pd_text}**, below the 10% policy threshold."
+        )
+
+    if business_decision == "Review":
+        return (
+            f"The applicant is in the **Review** zone because the estimated "
+            f"probability of default is **{pd_text}**, between 10% and 30%."
+        )
+
+    return (
+        f"The applicant is in the **Reject** zone because the estimated "
+        f"probability of default is **{pd_text}**, above the 30% policy threshold."
+    )
+
+
 def render_dataset_overview():
     preprocessing_summary = model_diagnostics.get("preprocessing_summary")
     validation_metrics = model_diagnostics.get("validation_metrics")
@@ -743,76 +837,89 @@ def render_applicant_form():
 
 def render_decision_overview(report: dict):
     predictive = report["predictive_layer"]
-    argumentation = report["argumentation_layer"]
-    reconciliation = report["decision_reconciliation"]
-
-    strength_summary = argumentation["strength_summary"]
 
     probability_of_default = predictive["probability_of_default"]
     business_decision = predictive["business_decision"]
-    argument_decision = strength_summary["argument_decision"]
 
-    approve_total = strength_summary["approve_total"]
-    reject_total = strength_summary["reject_total"]
+    st.subheader("Predictive Layer")
 
-    st.subheader("Decision Summary")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Probability of Default", f"{probability_of_default:.2%}")
-
-    with col2:
-        st.metric("Business Policy Decision", business_decision)
-
-    with col3:
-        st.metric("Argument-Based Decision", argument_decision)
-
-    st.info(
-        "Business policy: PD < 10% → Approve, "
-        "10% ≤ PD ≤ 30% → Review, PD > 30% → Reject."
+    st.write(
+        "The model estimates the applicant's probability of default and places "
+        "the applicant inside the business policy thresholds."
     )
 
-    st.subheader("Decision Reconciliation")
+    st.plotly_chart(
+        create_pd_policy_gauge(probability_of_default),
+        width="stretch",
+    )
 
-    col1, col2 = st.columns(2)
+    st.markdown("#### Business policy thresholds")
 
-    with col1:
-        st.metric("Reconciliation Status", reconciliation["status"])
+    policy_cards = [
+        {
+            "decision": "Approve",
+            "threshold": "PD < 10%",
+            "risk": "Low risk",
+            "border": "#2e7d32",
+            "background": "#e8f5e9",
+        },
+        {
+            "decision": "Review",
+            "threshold": "10% ≤ PD ≤ 30%",
+            "risk": "Intermediate risk",
+            "border": "#b7791f",
+            "background": "#fff8e1",
+        },
+        {
+            "decision": "Reject",
+            "threshold": "PD > 30%",
+            "risk": "High risk",
+            "border": "#b91c1c",
+            "background": "#fdecea",
+        },
+    ]
 
-    with col2:
-        st.metric(
-            "Dominant Argument Side",
-            argument_decision,
+    cols = st.columns(3)
+
+    for col, card in zip(cols, policy_cards):
+        is_current = business_decision == card["decision"]
+
+        border_width = "4px" if is_current else "1px"
+        opacity = "1" if is_current else "0.55"
+        badge = "Current applicant" if is_current else "&nbsp;"
+
+        card_html = (
+            f"<div style='"
+            f"background-color:{card['background']};"
+            f"border:{border_width} solid {card['border']};"
+            f"border-radius:14px;"
+            f"padding:18px;"
+            f"min-height:145px;"
+            f"opacity:{opacity};"
+            f"box-shadow:0 4px 12px rgba(0,0,0,0.08);"
+            f"'>"
+            f"<div style='font-size:24px;font-weight:800;color:{card['border']};margin-bottom:8px;'>"
+            f"{card['decision']}"
+            f"</div>"
+            f"<div style='font-size:18px;font-weight:600;margin-bottom:6px;'>"
+            f"{card['threshold']}"
+            f"</div>"
+            f"<div style='font-size:15px;color:#444;'>"
+            f"{card['risk']}"
+            f"</div>"
+            f"<div style='font-size:14px;font-weight:700;color:{card['border']};margin-top:14px;'>"
+            f"{badge}"
+            f"</div>"
+            f"</div>"
         )
 
-    st.write(reconciliation["explanation"])
+        with col:
+            st.markdown(card_html, unsafe_allow_html=True)
 
-    st.subheader("Argument Strength Balance")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric("Approval Strength", f"{approve_total:.3f}")
-
-    with col2:
-        st.metric("Rejection Strength", f"{reject_total:.3f}")
-
-    strength_chart = create_bar_chart(
-        title="Approval vs Rejection Argument Strength",
-        x_values=["Approval Strength", "Rejection Strength"],
-        y_values=[approve_total, reject_total],
-        yaxis_title="Total Strength",
+    st.caption(
+        f"The applicant's estimated probability of default is "
+        f"{probability_of_default:.2%}, so the current zone is {business_decision}."
     )
-
-    st.plotly_chart(strength_chart, width="stretch")
-
-    if argument_decision == "Reject":
-        st.error("Rejection-supporting arguments dominate.")
-    elif argument_decision == "Approve":
-        st.success("Approval-supporting arguments dominate.")
-    else:
-        st.warning("Approval and rejection arguments are balanced.")
 
 
 def render_predictive_layer(report: dict):
@@ -869,117 +976,273 @@ def render_argumentation_layer(report: dict):
     argumentation = report["argumentation_layer"]
     strength_summary = argumentation["strength_summary"]
 
+    arguments = argumentation["arguments"]
+    approve_total = strength_summary["approve_total"]
+    reject_total = strength_summary["reject_total"]
+    argument_decision = strength_summary["argument_decision"]
+
     st.subheader("Argumentation Layer")
 
     st.write(
-        "The argumentation layer transforms selected financial signals into "
-        "approval-supporting and rejection-supporting arguments. Each argument "
-        "has a quantified strength."
+        "The explanation layer converts the applicant's financial profile into "
+        "approval-supporting and rejection-supporting arguments. Each argument receives "
+        "a strength, and the side with the greater total strength becomes the dominant explanation."
     )
 
-    st.code("strength = base_strength × activation_strength")
-    st.code("base_strength = |β_j| / max(|β|)")
-
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns([1.4, 1])
 
     with col1:
-        st.metric("Approval Strength", f"{strength_summary['approve_total']:.3f}")
+        st.plotly_chart(
+            create_argument_strength_donut(
+                approve_total=approve_total,
+                reject_total=reject_total,
+            ),
+            width="stretch",
+        )
 
     with col2:
-        st.metric("Rejection Strength", f"{strength_summary['reject_total']:.3f}")
+        st.markdown("#### Final argument-based result")
 
-    with col3:
-        st.metric("Argument Decision", strength_summary["argument_decision"])
-
-    st.subheader("WHY Explanation")
-
-    for item in argumentation["why_explanation"]:
-        st.write(f"- {item}")
-
-    st.subheader("WHY-NOT Explanation")
-
-    for item in argumentation["why_not_explanation"]:
-        st.write(f"- {item}")
-
-    st.subheader("Argument Details")
-
-    for arg in argumentation["arguments"]:
-        if arg["side"] == "Reject":
-            st.error(f"{arg['name']} | Strength: {arg['strength']:.3f}")
+        if argument_decision == "Reject":
+            result_color = "#b91c1c"
+            result_background = "#fdecea"
+            result_text = "Rejection-supporting arguments dominate."
+        elif argument_decision == "Approve":
+            result_color = "#2e7d32"
+            result_background = "#e8f5e9"
+            result_text = "Approval-supporting arguments dominate."
         else:
-            st.success(f"{arg['name']} | Strength: {arg['strength']:.3f}")
+            result_color = "#b7791f"
+            result_background = "#fff8e1"
+            result_text = "Approval and rejection arguments are balanced."
 
-        st.write(arg["text"])
+        result_html = (
+            f"<div style='"
+            f"background-color:{result_background};"
+            f"border-left:7px solid {result_color};"
+            f"border-radius:14px;"
+            f"padding:22px;"
+            f"box-shadow:0 4px 12px rgba(0,0,0,0.08);"
+            f"'>"
+            f"<div style='font-size:34px;font-weight:800;color:{result_color};margin-bottom:8px;'>"
+            f"{argument_decision}"
+            f"</div>"
+            f"<div style='font-size:16px;color:#333;margin-bottom:14px;'>"
+            f"{result_text}"
+            f"</div>"
+            f"<div style='font-size:16px;'>"
+            f"<b>Approval strength:</b> {approve_total:.3f}<br>"
+            f"<b>Rejection strength:</b> {reject_total:.3f}"
+            f"</div>"
+            f"</div>"
+        )
 
-        col1, col2, col3 = st.columns(3)
+        st.markdown(result_html, unsafe_allow_html=True)
 
-        with col1:
-            st.metric("Applicant Value", arg["value"])
+    st.markdown("#### WHY / WHY-NOT explanation")
 
-        with col2:
-            st.metric("Threshold", arg["threshold"])
+    why_col, why_not_col = st.columns(2)
 
-        with col3:
-            st.metric("Side", arg["side"])
+    with why_col:
+        st.markdown("##### WHY this result?")
 
-        col4, col5, col6 = st.columns(3)
+        why_items = argumentation["why_explanation"]
 
-        with col4:
-            st.metric("Base Strength", f"{arg['base_strength']:.3f}")
-
-        with col5:
-            st.metric("Activation Strength", f"{arg['activation_strength']:.3f}")
-
-        with col6:
-            st.metric("Final Strength", f"{arg['strength']:.3f}")
-
-        st.caption(arg["strength_formula"])
-
-        with st.expander("Financial meaning and governance justification"):
-            st.write("**Financial meaning**")
-            st.write(arg["financial_meaning"])
-
-            st.write("**Governance justification**")
-            st.write(arg["governance_justification"])
-
-        st.divider()
-
-    st.subheader("Argument Graph")
-
-    graph_summary = argumentation["argument_graph_summary"]
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Arguments", graph_summary["number_of_arguments"])
-
-    with col2:
-        st.metric("Approval Arguments", graph_summary["number_of_approval_arguments"])
-
-    with col3:
-        st.metric("Rejection Arguments", graph_summary["number_of_rejection_arguments"])
-
-    with col4:
-        st.metric("Attacks", graph_summary["number_of_attacks"])
-
-    st.write(
-        "Approval-supporting and rejection-supporting arguments attack each other "
-        "because they support incompatible conclusions."
-    )
-
-    with st.expander("Accepted arguments"):
-        accepted_arguments = argumentation["accepted_arguments"]
-
-        if accepted_arguments:
-            for arg in accepted_arguments:
-                st.write(f"- {arg['name']} | strength: {arg['strength']:.3f}")
+        if argument_decision == "Reject":
+            st.error(
+                "The result is **Reject** because rejection-supporting arguments "
+                "are stronger overall."
+            )
+        elif argument_decision == "Approve":
+            st.success(
+                "The result is **Approve** because approval-supporting arguments "
+                "are stronger overall."
+            )
         else:
-            st.info(
-                "No accepted arguments because the argument-based decision is Review."
+            st.warning(
+                "The result is **Review** because approval and rejection support are balanced."
             )
 
-    with st.expander("Raw argument graph"):
-        st.json(argumentation["argument_graph"])
+        if why_items:
+            for item in why_items:
+                st.write(f"- {item}")
+
+    with why_not_col:
+        st.markdown("##### WHY-NOT the opposite?")
+
+        why_not_items = argumentation["why_not_explanation"]
+
+        if argument_decision == "Reject":
+            st.warning(
+                f"The applicant is not approved because approval-supporting arguments "
+                f"exist, but their total strength is only **{approve_total:.3f}**, "
+                f"while rejection strength is **{reject_total:.3f}**."
+            )
+
+            if why_not_items:
+                st.write("Approval-supporting reasons were considered:")
+                for item in why_not_items:
+                    st.write(f"- {item}")
+
+        elif argument_decision == "Approve":
+            st.warning(
+                f"The applicant is not rejected because rejection-supporting arguments "
+                f"exist, but their total strength is only **{reject_total:.3f}**, "
+                f"while approval strength is **{approve_total:.3f}**."
+            )
+
+            if why_not_items:
+                st.write("Rejection-supporting reasons were considered:")
+                for item in why_not_items:
+                    st.write(f"- {item}")
+
+        else:
+            st.info(
+                "There is no clear opposite decision because the argument strengths are balanced, "
+                "so the applicant is sent to Review."
+            )
+
+    st.markdown("#### How each argument strength is calculated")
+
+    formula_html = (
+        "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
+        "border-radius:16px;padding:22px;margin-top:10px;margin-bottom:18px;"
+        "text-align:center;box-shadow:0 3px 10px rgba(0,0,0,0.05);'>"
+        "<div style='font-size:15px;color:#555;margin-bottom:8px;'>Argument strength formula</div>"
+        "<div style='font-size:30px;font-weight:800;color:#1f2937;'>"
+        "Base strength × Activation strength = Final strength"
+        "</div>"
+        "</div>"
+    )
+
+    st.markdown(formula_html, unsafe_allow_html=True)
+
+    with st.expander("What do these numbers mean?"):
+        st.write(
+            "This section explains the three numbers used to calculate each argument's strength."
+        )
+
+        info_cols = st.columns(3)
+
+        with info_cols[0]:
+            st.markdown(
+                (
+                    "<div style='background-color:white;border:1px solid #d9e2ec;"
+                    "border-radius:14px;padding:16px;min-height:150px;"
+                    "box-shadow:0 3px 10px rgba(0,0,0,0.04);'>"
+                    "<div style='font-size:21px;font-weight:800;color:#111;margin-bottom:8px;'>"
+                    "Base strength"
+                    "</div>"
+                    "<div style='font-size:15px;color:#444;'>"
+                    "How important this financial feature is in the fitted logistic regression model."
+                    "</div>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        with info_cols[1]:
+            st.markdown(
+                (
+                    "<div style='background-color:white;border:1px solid #d9e2ec;"
+                    "border-radius:14px;padding:16px;min-height:150px;"
+                    "box-shadow:0 3px 10px rgba(0,0,0,0.04);'>"
+                    "<div style='font-size:21px;font-weight:800;color:#111;margin-bottom:8px;'>"
+                    "Activation strength"
+                    "</div>"
+                    "<div style='font-size:15px;color:#444;'>"
+                    "How strongly the applicant activates the rule, based on the rule threshold."
+                    "</div>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        with info_cols[2]:
+            st.markdown(
+                (
+                    "<div style='background-color:white;border:1px solid #d9e2ec;"
+                    "border-radius:14px;padding:16px;min-height:150px;"
+                    "box-shadow:0 3px 10px rgba(0,0,0,0.04);'>"
+                    "<div style='font-size:21px;font-weight:800;color:#111;margin-bottom:8px;'>"
+                    "Final strength"
+                    "</div>"
+                    "<div style='font-size:15px;color:#444;'>"
+                    "The final number added to either the approval side or the rejection side."
+                    "</div>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        st.info(
+            "The app adds all approval final strengths and all rejection final strengths. "
+            "The larger total becomes the dominant argument-based explanation."
+        )
+
+    for arg in arguments:
+        if arg["side"] == "Reject":
+            border_color = "#b91c1c"
+            background_color = "#fdecea"
+            side_text = "Supports rejection"
+        else:
+            border_color = "#2e7d32"
+            background_color = "#e8f5e9"
+            side_text = "Supports approval"
+
+        value = arg["value"]
+        threshold = arg["threshold"]
+
+        value_text = format_important_number(value)
+        threshold_text = format_important_number(threshold)
+
+        if arg["feature"] == "RevolvingUtilizationOfUnsecuredLines":
+            value_text = f"{value:.2%}"
+            threshold_text = f"{threshold:.0%}"
+
+        strength_html = (
+            f"<div style='"
+            f"background-color:{background_color};"
+            f"border:1px solid {border_color};"
+            f"border-left:7px solid {border_color};"
+            f"border-radius:16px;"
+            f"padding:20px;"
+            f"margin-bottom:18px;"
+            f"box-shadow:0 3px 10px rgba(0,0,0,0.06);"
+            f"'>"
+            f"<div style='font-size:14px;font-weight:800;color:{border_color};margin-bottom:6px;'>"
+            f"{side_text}"
+            f"</div>"
+            f"<div style='font-size:24px;font-weight:800;color:#222;margin-bottom:8px;'>"
+            f"{arg['name']}"
+            f"</div>"
+            f"<div style='font-size:15px;color:#444;margin-bottom:16px;'>"
+            f"Applicant value: <b>{value_text}</b> &nbsp; | &nbsp; "
+            f"Rule threshold: <b>{threshold_text}</b>"
+            f"</div>"
+            f"<div style='display:flex;gap:12px;'>"
+            f"<div style='flex:1;background-color:white;border-radius:12px;padding:14px;text-align:center;'>"
+            f"<div style='font-size:13px;color:#666;'>Base strength</div>"
+            f"<div style='font-size:30px;font-weight:800;color:#111;'>{arg['base_strength']:.3f}</div>"
+            f"</div>"
+            f"<div style='flex:1;background-color:white;border-radius:12px;padding:14px;text-align:center;'>"
+            f"<div style='font-size:13px;color:#666;'>Activation strength</div>"
+            f"<div style='font-size:30px;font-weight:800;color:#111;'>{arg['activation_strength']:.3f}</div>"
+            f"</div>"
+            f"<div style='flex:1;background-color:white;border-radius:12px;padding:14px;text-align:center;'>"
+            f"<div style='font-size:13px;color:#666;'>Final strength</div>"
+            f"<div style='font-size:30px;font-weight:800;color:{border_color};'>{arg['strength']:.3f}</div>"
+            f"</div>"
+            f"</div>"
+            f"</div>"
+        )
+
+        st.markdown(strength_html, unsafe_allow_html=True)
+
+    st.info(
+        "The final argument-based decision is obtained by comparing the total approval strength "
+        "with the total rejection strength."
+    )
 
 
 def render_counterfactuals(report: dict):
@@ -1187,9 +1450,8 @@ def render_applicant_profile_page():
 
         st.header("Applicant Evaluation Results")
 
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        tab1, tab2, tab3, tab4 = st.tabs(
             [
-                "Decision Overview",
                 "Predictive Layer",
                 "Argumentation Layer",
                 "Counterfactuals",
@@ -1201,15 +1463,12 @@ def render_applicant_profile_page():
             render_decision_overview(report)
 
         with tab2:
-            render_predictive_layer(report)
-
-        with tab3:
             render_argumentation_layer(report)
 
-        with tab4:
+        with tab3:
             render_counterfactuals(report)
 
-        with tab5:
+        with tab4:
             render_diagnostics_and_audit(report)
 
     else:
