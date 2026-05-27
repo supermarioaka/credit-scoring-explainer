@@ -1251,133 +1251,537 @@ def render_counterfactuals(report: dict):
     st.subheader("Counterfactual Analysis")
 
     st.write(
-        "Counterfactuals show what would need to change in the applicant profile "
-        "to weaken rejection-supporting arguments and potentially improve the decision."
+        "This section shows how a targeted change affects both the model prediction "
+        "and the argumentation strength balance."
     )
 
-    for suggestion in counterfactuals:
-        st.markdown(f"### {suggestion['title']}")
+    valid_counterfactuals = [
+        suggestion
+        for suggestion in counterfactuals
+        if suggestion.get("new_approve_total") is not None
+    ]
 
-        st.write(suggestion["change"])
+    if not valid_counterfactuals:
+        st.success(
+            "No major rule-based improvement is needed. "
+            "The applicant does not currently trigger any rejection-supporting rule."
+        )
+        return
 
-        st.write("**Meaning**")
-        st.write(suggestion["meaning"])
+    def format_counterfactual_value(feature: str, value):
+        if isinstance(value, str):
+            return value
 
-        if suggestion.get("new_probability") is not None:
-            col1, col2, col3 = st.columns(3)
+        if feature == "RevolvingUtilizationOfUnsecuredLines":
+            return f"{value:.0%}"
 
-            with col1:
-                st.metric("Original PD", f"{suggestion['original_probability']:.2%}")
+        if feature == "MonthlyIncome":
+            return f"{value:,.0f}"
 
-            with col2:
-                st.metric("New PD", f"{suggestion['new_probability']:.2%}")
+        if feature == "NumberOfTimes90DaysLate":
+            return f"{int(value)}"
 
-            with col3:
-                st.metric("PD Change", f"{suggestion['probability_change']:.2%}")
+        return format_important_number(value)
 
-            col4, col5 = st.columns(2)
+    def explain_target_choice(suggestion: dict) -> str:
+        feature = suggestion["feature"]
+        threshold = suggestion["threshold"]
+        target_value = suggestion["target_value"]
+        risk_direction = suggestion["risk_direction"]
 
-            with col4:
-                st.metric(
-                    "Original Business Decision",
-                    suggestion["original_business_decision"],
-                )
+        threshold_text = format_counterfactual_value(feature, threshold)
+        target_text = format_counterfactual_value(feature, target_value)
 
-            with col5:
-                st.metric(
-                    "New Business Decision",
-                    suggestion["new_business_decision"],
-                )
+        if feature == "NumberOfTimes90DaysLate":
+            return (
+                f"The target is {target_text} because this rule is triggered by any "
+                f"90+ days late payment. Moving to 0 removes the serious late-payment signal."
+            )
+
+        if risk_direction == "above":
+            return (
+                f"The threshold is {threshold_text}. The target {target_text} is chosen "
+                f"because it moves the applicant just below the risk threshold, so the rule "
+                f"no longer supports rejection."
+            )
+
+        if risk_direction == "below":
+            return (
+                f"The threshold is {threshold_text}. The target {target_text} is chosen "
+                f"because it moves the applicant just above the risk threshold, so the rule "
+                f"no longer supports rejection."
+            )
+
+        return "The target is chosen because it crosses the relevant rule threshold."
+
+    for suggestion in valid_counterfactuals:
+        is_combined = suggestion["title"] == "Combined Improvement Scenario"
+
+        if is_combined:
+            border_color = "#1f2937"
+            background_color = "#f8fafc"
+            card_title = "Combined improvement scenario"
+            current_text = "Current profile"
+            target_text = "Improved profile"
+            target_reason = (
+                "This scenario applies all active rule-based improvements together."
+            )
+        else:
+            border_color = "#2563eb"
+            background_color = "#eff6ff"
+            feature_name = format_feature_name(suggestion["feature"])
+            card_title = f"Improve {feature_name}"
+
+            current_text = format_counterfactual_value(
+                suggestion["feature"],
+                suggestion["current_value"],
+            )
+            target_text = format_counterfactual_value(
+                suggestion["feature"],
+                suggestion["target_value"],
+            )
+            target_reason = explain_target_choice(suggestion)
+
+        original_approve = suggestion["original_approve_total"]
+        original_reject = suggestion["original_reject_total"]
+        new_approve = suggestion["new_approve_total"]
+        new_reject = suggestion["new_reject_total"]
+
+        original_argument_decision = suggestion["original_argument_decision"]
+        new_argument_decision = suggestion["new_argument_decision"]
+
+        max_strength = max(
+            original_approve,
+            original_reject,
+            new_approve,
+            new_reject,
+            0.001,
+        )
+
+        original_approve_width = (original_approve / max_strength) * 100
+        original_reject_width = (original_reject / max_strength) * 100
+        new_approve_width = (new_approve / max_strength) * 100
+        new_reject_width = (new_reject / max_strength) * 100
+
+        header_html = (
+            f"<div style='"
+            f"background-color:{background_color};"
+            f"border:1px solid {border_color};"
+            f"border-left:8px solid {border_color};"
+            f"border-radius:18px;"
+            f"padding:24px;"
+            f"margin-top:14px;"
+            f"margin-bottom:22px;"
+            f"box-shadow:0 5px 16px rgba(0,0,0,0.08);"
+            f"'>"
+            f"<div style='font-size:26px;font-weight:900;color:{border_color};margin-bottom:18px;'>"
+            f"{card_title}"
+            f"</div>"
+            f"<div style='display:flex;align-items:center;gap:18px;margin-bottom:22px;'>"
+            f"<div style='background-color:white;border-radius:14px;padding:18px 22px;min-width:160px;text-align:center;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.05);'>"
+            f"<div style='font-size:14px;color:#666;font-weight:800;margin-bottom:4px;'>CURRENT VALUE</div>"
+            f"<div style='font-size:32px;font-weight:900;color:#111;'>{current_text}</div>"
+            f"</div>"
+            f"<div style='font-size:40px;font-weight:900;color:{border_color};'>→</div>"
+            f"<div style='background-color:white;border-radius:14px;padding:18px 22px;min-width:160px;text-align:center;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.05);'>"
+            f"<div style='font-size:14px;color:#666;font-weight:800;margin-bottom:4px;'>SUGGESTED TARGET</div>"
+            f"<div style='font-size:32px;font-weight:900;color:{border_color};'>{target_text}</div>"
+            f"</div>"
+            f"</div>"
+            f"<div style='"
+            f"background-color:white;"
+            f"border-radius:16px;"
+            f"padding:20px;"
+            f"border:1px solid #d9e2ec;"
+            f"box-shadow:0 2px 8px rgba(0,0,0,0.05);"
+            f"'>"
+            f"<div style='font-size:15px;font-weight:900;color:{border_color};margin-bottom:8px;'>"
+            f"WHY THIS NUMBER?"
+            f"</div>"
+            f"<div style='font-size:20px;font-weight:700;color:#222;line-height:1.5;'>"
+            f"{target_reason}"
+            f"</div>"
+            f"</div>"
+        )
+
+        st.markdown(header_html, unsafe_allow_html=True)
+
+        before_after_html = (
+            "<div style='display:flex;gap:18px;margin-bottom:26px;'>"
+            # Before card
+            "<div style='flex:1;background-color:white;border:1px solid #d9e2ec;"
+            "border-radius:16px;padding:22px;box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
+            "<div style='font-size:14px;font-weight:800;color:#6b7280;margin-bottom:4px;'>"
+            "BEFORE CHANGE"
+            "</div>"
+            f"<div style='font-size:30px;font-weight:800;color:#111;margin-bottom:20px;'>"
+            f"{original_argument_decision}"
+            "</div>"
+            "<div style='font-size:18px;font-weight:800;color:#2e7d32;margin-bottom:8px;'>"
+            f"Approval strength: <span style='font-size:22px;'>{original_approve:.3f}</span>"
+            "</div>"
+            "<div style='height:16px;background-color:#e5e7eb;border-radius:999px;margin-bottom:18px;'>"
+            f"<div style='height:16px;width:{original_approve_width:.1f}%;"
+            "background-color:#2e7d32;border-radius:999px;'></div>"
+            "</div>"
+            "<div style='font-size:18px;font-weight:800;color:#b91c1c;margin-bottom:8px;'>"
+            f"Rejection strength: <span style='font-size:22px;'>{original_reject:.3f}</span>"
+            "</div>"
+            "<div style='height:16px;background-color:#e5e7eb;border-radius:999px;'>"
+            f"<div style='height:16px;width:{original_reject_width:.1f}%;"
+            "background-color:#b91c1c;border-radius:999px;'></div>"
+            "</div>"
+            "</div>"
+            # Arrow
+            "<div style='display:flex;align-items:center;justify-content:center;"
+            "font-size:36px;font-weight:800;color:#6b7280;'>"
+            "→"
+            "</div>"
+            # After card
+            "<div style='flex:1;background-color:white;border:1px solid #d9e2ec;"
+            "border-radius:16px;padding:22px;box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
+            "<div style='font-size:14px;font-weight:800;color:#6b7280;margin-bottom:4px;'>"
+            "AFTER CHANGE"
+            "</div>"
+            f"<div style='font-size:30px;font-weight:800;color:#111;margin-bottom:20px;'>"
+            f"{new_argument_decision}"
+            "</div>"
+            "<div style='font-size:18px;font-weight:800;color:#2e7d32;margin-bottom:8px;'>"
+            f"Approval strength: <span style='font-size:22px;'>{new_approve:.3f}</span>"
+            "</div>"
+            "<div style='height:16px;background-color:#e5e7eb;border-radius:999px;margin-bottom:18px;'>"
+            f"<div style='height:16px;width:{new_approve_width:.1f}%;"
+            "background-color:#2e7d32;border-radius:999px;'></div>"
+            "</div>"
+            "<div style='font-size:18px;font-weight:800;color:#b91c1c;margin-bottom:8px;'>"
+            f"Rejection strength: <span style='font-size:22px;'>{new_reject:.3f}</span>"
+            "</div>"
+            "<div style='height:16px;background-color:#e5e7eb;border-radius:999px;'>"
+            f"<div style='height:16px;width:{new_reject_width:.1f}%;"
+            "background-color:#b91c1c;border-radius:999px;'></div>"
+            "</div>"
+            "</div>"
+            "</div>"
+        )
+
+        st.markdown(before_after_html, unsafe_allow_html=True)
+        original_probability = suggestion["original_probability"]
+        new_probability = suggestion["new_probability"]
+        probability_change = suggestion["probability_change"]
+
+        original_business_decision = suggestion["original_business_decision"]
+        new_business_decision = suggestion["new_business_decision"]
+
+        if probability_change < 0:
+            change_color = "#2e7d32"
+            change_label = f"{probability_change:.2%}"
+        elif probability_change > 0:
+            change_color = "#b91c1c"
+            change_label = f"+{probability_change:.2%}"
+        else:
+            change_color = "#6b7280"
+            change_label = "0.00%"
+
+        predictive_impact_html = (
+            "<div style='"
+            "background-color:#ffffff;"
+            "border:1px solid #d9e2ec;"
+            "border-radius:16px;"
+            "padding:18px;"
+            "margin-top:6px;"
+            "margin-bottom:22px;"
+            "box-shadow:0 3px 10px rgba(0,0,0,0.05);"
+            "'>"
+            "<div style='font-size:18px;font-weight:900;color:#1f2937;margin-bottom:14px;'>"
+            "Predictive impact"
+            "</div>"
+            "<div style='display:flex;align-items:center;gap:14px;'>"
+            "<div style='flex:1;background-color:#f8fafc;border-radius:14px;padding:16px;text-align:center;'>"
+            "<div style='font-size:13px;font-weight:800;color:#6b7280;margin-bottom:4px;'>BEFORE CHANGE</div>"
+            f"<div style='font-size:28px;font-weight:900;color:#111;'>{original_probability:.2%}</div>"
+            f"<div style='font-size:18px;font-weight:800;color:#374151;margin-top:4px;'>{original_business_decision}</div>"
+            "</div>"
+            "<div style='font-size:30px;font-weight:900;color:#6b7280;'>→</div>"
+            "<div style='flex:1;background-color:#f8fafc;border-radius:14px;padding:16px;text-align:center;'>"
+            "<div style='font-size:13px;font-weight:800;color:#6b7280;margin-bottom:4px;'>AFTER CHANGE</div>"
+            f"<div style='font-size:28px;font-weight:900;color:#111;'>{new_probability:.2%}</div>"
+            f"<div style='font-size:18px;font-weight:800;color:#374151;margin-top:4px;'>{new_business_decision}</div>"
+            "</div>"
+            "<div style='flex:1;background-color:#f8fafc;border-radius:14px;padding:16px;text-align:center;'>"
+            "<div style='font-size:13px;font-weight:800;color:#6b7280;margin-bottom:4px;'>PD CHANGE</div>"
+            f"<div style='font-size:30px;font-weight:900;color:{change_color};'>{change_label}</div>"
+            "</div>"
+            "</div>"
+            "</div>"
+        )
+
+        st.markdown(predictive_impact_html, unsafe_allow_html=True)
 
         st.divider()
 
 
 def render_diagnostics_and_audit(report: dict):
     predictive = report["predictive_layer"]
-    audit_record = report["audit_record"]
+    argumentation = report["argumentation_layer"]
+    counterfactuals = report["counterfactuals"]
+
     model_diagnostics = predictive["model_diagnostics"]
+    validation_metrics = model_diagnostics.get("validation_metrics")
+    strength_summary = argumentation["strength_summary"]
 
-    st.subheader("Model Diagnostics")
+    probability_of_default = predictive["probability_of_default"]
+    business_decision = predictive["business_decision"]
 
-    validation_metrics = model_diagnostics["validation_metrics"]
+    approve_total = strength_summary["approve_total"]
+    reject_total = strength_summary["reject_total"]
+    argument_decision = strength_summary["argument_decision"]
+
+    st.subheader("Diagnostics & Audit Summary")
+
+    st.write(
+        "A compact summary of the trained model, the current applicant decision, "
+        "and the explanation logic used by the system."
+    )
+
+    # ------------------------------------------------------------
+    # 1. Model validation summary
+    # ------------------------------------------------------------
+
+    st.markdown("#### 1. Model validation")
 
     if validation_metrics is not None:
-        col1, col2 = st.columns(2)
+        roc_auc = validation_metrics["roc_auc"]
+        confusion_matrix = validation_metrics["confusion_matrix"]
 
-        with col1:
-            st.metric("Accuracy", f"{validation_metrics['accuracy']:.4f}")
+        true_non_default = confusion_matrix[0][0]
+        false_default = confusion_matrix[0][1]
+        missed_defaults = confusion_matrix[1][0]
+        true_default = confusion_matrix[1][1]
 
-        with col2:
-            st.metric("ROC-AUC", f"{validation_metrics['roc_auc']:.4f}")
+        validation_html = (
+            "<div style='background-color:#ffffff;border:1px solid #d9e2ec;"
+            "border-radius:18px;padding:24px;margin-bottom:24px;"
+            "box-shadow:0 5px 16px rgba(0,0,0,0.06);'>"
+            "<div style='display:flex;gap:18px;align-items:stretch;margin-bottom:20px;'>"
+            "<div style='flex:1.1;background-color:#eff6ff;border-radius:18px;"
+            "padding:24px;text-align:center;border:1px solid #2563eb;'>"
+            "<div style='font-size:18px;font-weight:900;color:#2563eb;margin-bottom:6px;'>"
+            "ROC-AUC"
+            "</div>"
+            f"<div style='font-size:56px;font-weight:900;color:#111;'>{roc_auc:.3f}</div>"
+            "<div style='font-size:18px;font-weight:700;color:#333;margin-top:6px;'>"
+            "The model is good at ranking applicants from lower to higher risk."
+            "</div>"
+            "</div>"
+            "<div style='flex:1.6;background-color:#f8fafc;border-radius:18px;"
+            "padding:24px;border:1px solid #d9e2ec;'>"
+            "<div style='font-size:24px;font-weight:900;color:#1f2937;margin-bottom:10px;'>"
+            "What this validation tells us"
+            "</div>"
+            "<div style='font-size:18px;color:#333;line-height:1.5;'>"
+            "The model separates risk reasonably well. Its main limitation is that the dataset is imbalanced: "
+            "most applicants do not default, so some actual default cases are still missed."
+            "</div>"
+            "</div>"
+            "</div>"
+            "<div style='font-size:22px;font-weight:900;color:#1f2937;margin-bottom:14px;'>"
+            "Test set outcome summary"
+            "</div>"
+            "<div style='display:flex;gap:14px;'>"
+            "<div style='flex:1;background-color:#e8f5e9;border-radius:16px;padding:18px;text-align:center;'>"
+            "<div style='font-size:14px;font-weight:900;color:#2e7d32;'>CORRECT NON-DEFAULTS</div>"
+            f"<div style='font-size:34px;font-weight:900;color:#111;'>{true_non_default:,}</div>"
+            "</div>"
+            "<div style='flex:1;background-color:#e8f5e9;border-radius:16px;padding:18px;text-align:center;'>"
+            "<div style='font-size:14px;font-weight:900;color:#2e7d32;'>CORRECT DEFAULTS</div>"
+            f"<div style='font-size:34px;font-weight:900;color:#111;'>{true_default:,}</div>"
+            "</div>"
+            "<div style='flex:1;background-color:#fff8e1;border-radius:16px;padding:18px;text-align:center;'>"
+            "<div style='font-size:14px;font-weight:900;color:#b7791f;'>FALSE ALARMS</div>"
+            f"<div style='font-size:34px;font-weight:900;color:#111;'>{false_default:,}</div>"
+            "</div>"
+            "<div style='flex:1;background-color:#fdecea;border-radius:16px;padding:18px;text-align:center;'>"
+            "<div style='font-size:14px;font-weight:900;color:#b91c1c;'>MISSED DEFAULTS</div>"
+            f"<div style='font-size:34px;font-weight:900;color:#111;'>{missed_defaults:,}</div>"
+            "</div>"
+            "</div>"
+            "</div>"
+        )
 
-        with st.expander("Validation details"):
-            st.write("**Confusion matrix**")
-            st.write(validation_metrics["confusion_matrix"])
+        st.markdown(validation_html, unsafe_allow_html=True)
 
-            st.write("**Classification report**")
-            st.json(validation_metrics["classification_report"])
+    else:
+        st.info("No validation metrics found in the saved model object.")
+    # ------------------------------------------------------------
+    # 2. Logistic regression base model
+    # ------------------------------------------------------------
 
-    with st.expander("Coefficient normalization"):
-        coefficient_strengths = model_diagnostics["coefficient_strengths"]
+    st.markdown("#### 2. Logistic regression base model")
 
-        st.write("**Formula**")
-        st.code("base_strength = |β_j| / max(|β|)")
+    intercept, coefficients = get_model_coefficients(model)
 
-        st.metric("Intercept", f"{coefficient_strengths['intercept']:.4f}")
+    feature_order = [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "NumberOfTimes90DaysLate",
+        "age",
+        "MonthlyIncome",
+        "DebtRatio",
+    ]
 
-        coefficient_rows = []
+    feature_cards_html = (
+        "<div style='background-color:#ffffff;border:1px solid #d9e2ec;"
+        "border-radius:18px;padding:22px;margin-bottom:22px;"
+        "box-shadow:0 5px 16px rgba(0,0,0,0.06);'>"
+        "<div style='font-size:22px;font-weight:900;color:#1f2937;margin-bottom:8px;'>"
+        "Base logistic regression coefficients"
+        "</div>"
+        "<div style='font-size:17px;color:#444;line-height:1.5;margin-bottom:18px;'>"
+        "These are not applicant values. They are fixed model weights learned during training. "
+        "They show how each feature generally affects estimated default risk before any specific applicant is entered."
+        "</div>"
+        "<div style='display:flex;gap:12px;flex-wrap:wrap;'>"
+    )
 
-        for feature, details in coefficient_strengths["normalized_strengths"].items():
-            coefficient_rows.append(
-                {
-                    "Feature": format_feature_name(feature),
-                    "Coefficient": details["coefficient"],
-                    "Absolute coefficient": details["absolute_coefficient"],
-                    "Normalized strength": details["normalized_strength"],
-                }
+    for feature in feature_order:
+        coefficient = coefficients[feature]
+
+        if coefficient >= 0:
+            color = "#b91c1c"
+            background = "#fdecea"
+            direction = "Risk ↑"
+        else:
+            color = "#2e7d32"
+            background = "#e8f5e9"
+            direction = "Risk ↓"
+
+        feature_cards_html += (
+            f"<div style='flex:1;min-width:160px;background-color:{background};"
+            f"border:1px solid {color};border-left:6px solid {color};"
+            f"border-radius:14px;padding:16px;'>"
+            f"<div style='font-size:14px;font-weight:900;color:{color};margin-bottom:6px;'>"
+            f"{direction}"
+            f"</div>"
+            f"<div style='font-size:16px;font-weight:900;color:#111;margin-bottom:8px;'>"
+            f"{format_feature_name(feature)}"
+            f"</div>"
+            f"<div style='font-size:13px;font-weight:900;color:#6b7280;margin-bottom:4px;'>"
+            f"MODEL WEIGHT"
+            f"</div>"
+            f"<div style='font-size:30px;font-weight:900;color:#111;'>"
+            f"{coefficient:.4f}"
+            f"</div>"
+            f"</div>"
+        )
+
+    feature_cards_html += (
+        "</div>"
+        f"<div style='font-size:13px;color:#555;margin-top:14px;'>"
+        f"Intercept: {intercept:.4f}"
+        "</div>"
+        "</div>"
+    )
+
+    st.markdown(feature_cards_html, unsafe_allow_html=True)
+
+    # ------------------------------------------------------------
+    # 3. Current applicant explanation summary
+    # ------------------------------------------------------------
+
+    st.markdown("#### 3. Current applicant summary")
+
+    valid_counterfactuals = [
+        suggestion
+        for suggestion in counterfactuals
+        if suggestion.get("new_approve_total") is not None
+    ]
+
+    suggested_changes_html = ""
+
+    if valid_counterfactuals:
+        for suggestion in valid_counterfactuals:
+            if suggestion["title"] == "Combined Improvement Scenario":
+                change_title = "Combined improvement"
+                change_text = "Apply all active rule-based improvements together."
+            else:
+                change_title = f"Improve {format_feature_name(suggestion['feature'])}"
+                change_text = suggestion["change"]
+
+            suggested_changes_html += (
+                "<div style='background-color:white;border:1px solid #d9e2ec;"
+                "border-left:6px solid #2563eb;border-radius:14px;padding:14px;"
+                "margin-bottom:10px;'>"
+                f"<div style='font-size:16px;font-weight:900;color:#2563eb;margin-bottom:4px;'>"
+                f"{change_title}"
+                f"</div>"
+                f"<div style='font-size:17px;font-weight:800;color:#111;'>"
+                f"{change_text}"
+                f"</div>"
+                "</div>"
             )
+    else:
+        suggested_changes_html = (
+            "<div style='background-color:white;border:1px solid #d9e2ec;"
+            "border-left:6px solid #2e7d32;border-radius:14px;padding:14px;'>"
+            "<div style='font-size:17px;font-weight:800;color:#111;'>"
+            "No major rule-based improvement is currently needed."
+            "</div>"
+            "</div>"
+        )
 
-        coefficient_df = pd.DataFrame(coefficient_rows)
-        st.dataframe(coefficient_df, width="stretch")
+    if business_decision == "Approve":
+        decision_color = "#2e7d32"
+        decision_background = "#e8f5e9"
+    elif business_decision == "Review":
+        decision_color = "#b7791f"
+        decision_background = "#fff8e1"
+    else:
+        decision_color = "#b91c1c"
+        decision_background = "#fdecea"
 
-        comparison_df = pd.DataFrame(model_diagnostics["base_strength_comparison"])
-        comparison_df["feature"] = comparison_df["feature"].apply(format_feature_name)
+    summary_html = (
+        "<div style='background-color:#ffffff;border:1px solid #d9e2ec;"
+        "border-radius:18px;padding:22px;margin-bottom:22px;"
+        "box-shadow:0 5px 16px rgba(0,0,0,0.06);'>"
+        "<div style='display:flex;gap:16px;margin-bottom:18px;'>"
+        f"<div style='flex:1;background-color:{decision_background};border-radius:16px;"
+        f"padding:18px;text-align:center;border:1px solid {decision_color};'>"
+        "<div style='font-size:13px;font-weight:900;color:#6b7280;'>PREDICTIVE RESULT</div>"
+        f"<div style='font-size:36px;font-weight:900;color:{decision_color};'>{business_decision}</div>"
+        f"<div style='font-size:18px;font-weight:800;color:#111;'>{probability_of_default:.2%} PD</div>"
+        "</div>"
+        "<div style='flex:1;background-color:#e8f5e9;border-radius:16px;padding:18px;text-align:center;'>"
+        "<div style='font-size:13px;font-weight:900;color:#2e7d32;'>APPROVAL STRENGTH</div>"
+        f"<div style='font-size:38px;font-weight:900;color:#111;'>{approve_total:.3f}</div>"
+        "</div>"
+        "<div style='flex:1;background-color:#fdecea;border-radius:16px;padding:18px;text-align:center;'>"
+        "<div style='font-size:13px;font-weight:900;color:#b91c1c;'>REJECTION STRENGTH</div>"
+        f"<div style='font-size:38px;font-weight:900;color:#111;'>{reject_total:.3f}</div>"
+        "</div>"
+        "<div style='flex:1;background-color:#f8fafc;border-radius:16px;padding:18px;text-align:center;'>"
+        "<div style='font-size:13px;font-weight:900;color:#6b7280;'>ARGUMENT RESULT</div>"
+        f"<div style='font-size:36px;font-weight:900;color:#111;'>{argument_decision}</div>"
+        "</div>"
+        "</div>"
+        "<div style='background-color:#f8fafc;border-radius:16px;padding:18px;"
+        "border:1px solid #d9e2ec;'>"
+        "<div style='font-size:16px;font-weight:900;color:#1f2937;margin-bottom:10px;'>"
+        "Suggested improvements"
+        "</div>"
+        f"{suggested_changes_html}"
+        "</div>"
+        "</div>"
+    )
 
-        st.write("**Model-derived strengths vs configured rule strengths**")
-        st.dataframe(comparison_df, width="stretch")
+    st.markdown(summary_html, unsafe_allow_html=True)
 
-    with st.expander("Preprocessing summary"):
-        preprocessing_summary = model_diagnostics.get("preprocessing_summary")
+    # ------------------------------------------------------------
+    # Optional raw audit record
+    # ------------------------------------------------------------
 
-        if preprocessing_summary is not None:
-            st.write("**Train/test split**")
-            st.json(preprocessing_summary["split"])
-
-            st.write("**Missing values before imputation**")
-            st.json(preprocessing_summary["missing_values_before_imputation"])
-
-            st.write("**Missing values after imputation**")
-            st.json(preprocessing_summary["missing_values_after_imputation"])
-
-            st.write("**Winsorization bounds**")
-            st.json(preprocessing_summary["winsorization_bounds"])
-
-            st.write("**Scaler**")
-            st.json(
-                {
-                    "type": preprocessing_summary["scaler"]["type"],
-                    "fitted_on": preprocessing_summary["scaler"]["fitted_on"],
-                    "applied_to": preprocessing_summary["scaler"]["applied_to"],
-                }
-            )
-
-    st.subheader("Audit Trail")
-
-    audit_df = pd.DataFrame(audit_record["argumentation_layer"]["arguments"])
-    st.dataframe(audit_df, width="stretch")
-
-    with st.expander("Full audit record"):
-        st.json(audit_record)
+    with st.expander("Show full audit record"):
+        st.json(report["audit_record"])
 
 
 # ------------------------------------------------------------
@@ -1397,38 +1801,227 @@ def go_to_section(section_name: str):
 
 
 def render_home_page():
-    st.title("🏦 Credit Scoring Explainer")
+    validation_metrics = model_diagnostics.get("validation_metrics")
+    preprocessing_summary = model_diagnostics.get("preprocessing_summary")
 
-    st.write(
-        "This app demonstrates the full thesis workflow: preprocessing, "
-        "logistic regression, and argument-based applicant evaluation."
+    if validation_metrics is not None:
+        roc_auc_text = f"{validation_metrics['roc_auc']:.3f}"
+    else:
+        roc_auc_text = "-"
+
+    if preprocessing_summary is not None:
+        train_size = f"{preprocessing_summary['train_size']:,}"
+        test_size = f"{preprocessing_summary['test_size']:,}"
+    else:
+        train_size = "-"
+        test_size = "-"
+
+    # ------------------------------------------------------------
+    # Hero section
+    # ------------------------------------------------------------
+
+    hero_html = (
+        "<div style='"
+        "background:linear-gradient(135deg,#0f172a,#1e3a8a);"
+        "border-radius:24px;"
+        "padding:38px;"
+        "margin-bottom:28px;"
+        "box-shadow:0 8px 24px rgba(0,0,0,0.18);"
+        "'>"
+        "<div style='font-size:16px;font-weight:800;color:#bfdbfe;margin-bottom:10px;'>"
+        "Explainable Credit Scoring · Argumentation · Auditability"
+        "</div>"
+        "<div style='font-size:46px;font-weight:900;color:white;line-height:1.1;margin-bottom:14px;'>"
+        "Turning credit-risk predictions into transparent, auditable decisions"
+        "</div>"
+        "<div style='font-size:20px;color:#dbeafe;line-height:1.5;max-width:980px;'>"
+        "This thesis application goes beyond a simple prediction. It estimates credit risk, "
+        "translates financial signals into structured arguments, explains WHY and WHY-NOT, "
+        "tests possible improvements through counterfactuals, and records the full decision path "
+        "for auditability."
+        "</div>"
+        "</div>"
     )
 
-    st.markdown("### What would you like to see?")
+    st.markdown(hero_html, unsafe_allow_html=True)
+
+    # ------------------------------------------------------------
+    # Key thesis highlights
+    # ------------------------------------------------------------
+
+    highlight_cols = st.columns(4)
+
+    highlights = [
+        {
+            "title": "Model",
+            "value": "Logistic Regression",
+            "text": "Transparent predictive layer",
+            "color": "#2563eb",
+            "background": "#eff6ff",
+        },
+        {
+            "title": "ROC-AUC",
+            "value": roc_auc_text,
+            "text": "Risk ranking quality",
+            "color": "#7c3aed",
+            "background": "#f3e8ff",
+        },
+        {
+            "title": "Training / Test",
+            "value": f"{train_size} / {test_size}",
+            "text": "Reproducible split",
+            "color": "#b7791f",
+            "background": "#fff8e1",
+        },
+        {
+            "title": "Explanation",
+            "value": "WHY / WHY-NOT",
+            "text": "Argument-based reasoning",
+            "color": "#2e7d32",
+            "background": "#e8f5e9",
+        },
+    ]
+
+    for col, item in zip(highlight_cols, highlights):
+        card_html = (
+            f"<div style='"
+            f"background-color:{item['background']};"
+            f"border:1px solid {item['color']};"
+            f"border-left:7px solid {item['color']};"
+            f"border-radius:18px;"
+            f"padding:18px;"
+            f"min-height:150px;"
+            f"box-shadow:0 4px 12px rgba(0,0,0,0.06);"
+            f"'>"
+            f"<div style='font-size:13px;font-weight:900;color:{item['color']};margin-bottom:8px;'>"
+            f"{item['title']}"
+            f"</div>"
+            f"<div style='font-size:26px;font-weight:900;color:#111;margin-bottom:8px;'>"
+            f"{item['value']}"
+            f"</div>"
+            f"<div style='font-size:14px;color:#444;'>"
+            f"{item['text']}"
+            f"</div>"
+            f"</div>"
+        )
+
+        with col:
+            st.markdown(card_html, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ------------------------------------------------------------
+    # Thesis workflow
+    # ------------------------------------------------------------
+
+    st.markdown("### Thesis workflow")
+
+    workflow_html = (
+        "<div style='"
+        "background-color:#ffffff;"
+        "border:1px solid #d9e2ec;"
+        "border-radius:20px;"
+        "padding:24px;"
+        "margin-bottom:28px;"
+        "box-shadow:0 5px 16px rgba(0,0,0,0.06);"
+        "'>"
+        "<div style='display:flex;align-items:center;gap:12px;text-align:center;'>"
+        "<div style='flex:1;background-color:#eff6ff;border-radius:16px;padding:16px;'>"
+        "<div style='font-size:24px;font-weight:900;color:#2563eb;'>1</div>"
+        "<div style='font-size:17px;font-weight:900;color:#111;'>Preprocess</div>"
+        "<div style='font-size:13px;color:#555;'>Clean and standardize data</div>"
+        "</div>"
+        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
+        "<div style='flex:1;background-color:#f3e8ff;border-radius:16px;padding:16px;'>"
+        "<div style='font-size:24px;font-weight:900;color:#7c3aed;'>2</div>"
+        "<div style='font-size:17px;font-weight:900;color:#111;'>Predict</div>"
+        "<div style='font-size:13px;color:#555;'>Estimate default risk</div>"
+        "</div>"
+        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
+        "<div style='flex:1;background-color:#fff8e1;border-radius:16px;padding:16px;'>"
+        "<div style='font-size:24px;font-weight:900;color:#b7791f;'>3</div>"
+        "<div style='font-size:17px;font-weight:900;color:#111;'>Argue</div>"
+        "<div style='font-size:13px;color:#555;'>Build financial arguments</div>"
+        "</div>"
+        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
+        "<div style='flex:1;background-color:#e8f5e9;border-radius:16px;padding:16px;'>"
+        "<div style='font-size:24px;font-weight:900;color:#2e7d32;'>4</div>"
+        "<div style='font-size:17px;font-weight:900;color:#111;'>Explain</div>"
+        "<div style='font-size:13px;color:#555;'>WHY / WHY-NOT and audit</div>"
+        "</div>"
+        "</div>"
+        "</div>"
+    )
+
+    st.markdown(workflow_html, unsafe_allow_html=True)
+
+    # ------------------------------------------------------------
+    # Navigation cards
+    # ------------------------------------------------------------
+
+    st.markdown("### Explore the system")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.subheader("1. Preprocessing")
-        st.write(
-            "See how the dataset was split, cleaned, winsorized, and standardized."
+        st.markdown(
+            (
+                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
+                "border-radius:18px;padding:22px;min-height:185px;"
+                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
+                "<div style='font-size:26px;font-weight:900;color:#2563eb;margin-bottom:8px;'>"
+                "1. Preprocessing"
+                "</div>"
+                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
+                "See how the dataset was split, cleaned, winsorized, and standardized "
+                "before model training."
+                "</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
 
         if st.button("Open Preprocessing", width="stretch"):
             go_to_section("Preprocessing")
 
     with col2:
-        st.subheader("2. Logistic Regression")
-        st.write(
-            "See the fitted model, coefficients, and connection to argument strength."
+        st.markdown(
+            (
+                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
+                "border-radius:18px;padding:22px;min-height:185px;"
+                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
+                "<div style='font-size:26px;font-weight:900;color:#7c3aed;margin-bottom:8px;'>"
+                "2. Logistic Regression"
+                "</div>"
+                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
+                "Inspect the fitted model, coefficients, validation, and how model weights "
+                "connect to argument strength."
+                "</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
 
         if st.button("Open Logistic Regression", width="stretch"):
             go_to_section("Logistic Regression")
 
     with col3:
-        st.subheader("3. Applicant Profile")
-        st.write("Enter applicant values and generate the WHY / WHY-NOT explanation.")
+        st.markdown(
+            (
+                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
+                "border-radius:18px;padding:22px;min-height:185px;"
+                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
+                "<div style='font-size:26px;font-weight:900;color:#2e7d32;margin-bottom:8px;'>"
+                "3. Applicant Evaluation"
+                "</div>"
+                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
+                "Enter an applicant profile and generate prediction, argumentation, "
+                "counterfactuals, and audit summary."
+                "</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
 
         if st.button("Open Applicant Profile", width="stretch"):
             go_to_section("Applicant Profile")
