@@ -1801,230 +1801,347 @@ def go_to_section(section_name: str):
 
 
 def render_home_page():
-    validation_metrics = model_diagnostics.get("validation_metrics")
-    preprocessing_summary = model_diagnostics.get("preprocessing_summary")
+    # ------------------------------------------------------------
+    # Cleaner premium main page
+    # ------------------------------------------------------------
 
-    if validation_metrics is not None:
-        roc_auc_text = f"{validation_metrics['roc_auc']:.3f}"
-    else:
-        roc_auc_text = "-"
-
-    if preprocessing_summary is not None:
-        train_size = f"{preprocessing_summary['train_size']:,}"
-        test_size = f"{preprocessing_summary['test_size']:,}"
-    else:
-        train_size = "-"
-        test_size = "-"
+    st.markdown(
+        (
+            "<style>"
+            ".stButton > button {"
+            "border-radius: 14px;"
+            "height: 48px;"
+            "font-weight: 800;"
+            "border: 1px solid #0f172a;"
+            "background: #0f172a;"
+            "color: white;"
+            "box-shadow: 0 6px 16px rgba(15,23,42,0.18);"
+            "}"
+            ".stButton > button:hover {"
+            "border: 1px solid #1e40af;"
+            "background: #1e40af;"
+            "color: white;"
+            "}"
+            "</style>"
+        ),
+        unsafe_allow_html=True,
+    )
 
     # ------------------------------------------------------------
-    # Hero section
+    # Top hero box (cleaner and prettier)
     # ------------------------------------------------------------
 
     hero_html = (
         "<div style='"
-        "background:linear-gradient(135deg,#0f172a,#1e3a8a);"
-        "border-radius:24px;"
-        "padding:38px;"
-        "margin-bottom:28px;"
-        "box-shadow:0 8px 24px rgba(0,0,0,0.18);"
+        "background: radial-gradient(circle at top left, #1d4ed8 0%, #0f172a 42%, #020617 100%);"
+        "border-radius: 32px;"
+        "padding: 36px 34px 34px 34px;"
+        "margin-bottom: 28px;"
+        "box-shadow: 0 18px 44px rgba(15,23,42,0.30);"
+        "border: 1px solid rgba(255,255,255,0.08);"
+        "position: relative;"
+        "overflow: hidden;"
         "'>"
-        "<div style='font-size:16px;font-weight:800;color:#bfdbfe;margin-bottom:10px;'>"
-        "Explainable Credit Scoring · Argumentation · Auditability"
+        "<div style='"
+        "position:absolute;top:-60px;right:-80px;width:240px;height:240px;"
+        "background:rgba(255,255,255,0.06);border-radius:50%;"
+        "'></div>"
+        "<div style='"
+        "display:inline-block;"
+        "background: rgba(255,255,255,0.10);"
+        "border: 1px solid rgba(255,255,255,0.18);"
+        "color: #bfdbfe;"
+        "padding: 8px 14px;"
+        "border-radius: 999px;"
+        "font-size: 12px;"
+        "font-weight: 900;"
+        "letter-spacing: 0.08em;"
+        "text-transform: uppercase;"
+        "margin-bottom: 16px;"
+        "'>"
+        "Argument-Based Credit Scoring"
         "</div>"
-        "<div style='font-size:46px;font-weight:900;color:white;line-height:1.1;margin-bottom:14px;'>"
-        "Turning credit-risk predictions into transparent, auditable decisions"
+        "<div style='"
+        "font-size: 44px;"
+        "font-weight: 950;"
+        "color: white;"
+        "line-height: 1.08;"
+        "margin-bottom: 14px;"
+        "max-width: 860px;"
+        "'>"
+        "Explore the decision pipeline"
         "</div>"
-        "<div style='font-size:20px;color:#dbeafe;line-height:1.5;max-width:980px;'>"
-        "This thesis application goes beyond a simple prediction. It estimates credit risk, "
-        "translates financial signals into structured arguments, explains WHY and WHY-NOT, "
-        "tests possible improvements through counterfactuals, and records the full decision path "
-        "for auditability."
+        "<div style='"
+        "font-size: 19px;"
+        "color: #dbeafe;"
+        "line-height: 1.60;"
+        "max-width: 920px;"
+        "'>"
+        "Move through the three core layers of the system: data preparation, "
+        "risk prediction, and explainable applicant evaluation."
+        "</div>"
+        "<div style='margin-top:18px;display:flex;gap:8px;'>"
+        "<div style='width:10px;height:10px;border-radius:50%;background:#60a5fa;'></div>"
+        "<div style='width:10px;height:10px;border-radius:50%;background:#818cf8;'></div>"
+        "<div style='width:10px;height:10px;border-radius:50%;background:#34d399;'></div>"
         "</div>"
         "</div>"
     )
 
     st.markdown(hero_html, unsafe_allow_html=True)
 
-    # ------------------------------------------------------------
-    # Key thesis highlights
-    # ------------------------------------------------------------
+    col1, col2, col3 = st.columns(3)
 
-    highlight_cols = st.columns(4)
+    def render_premium_card(
+        step,
+        title,
+        subtitle,
+        description,
+        color,
+        soft_color,
+        visual_html,
+    ):
+        step_label = f"0{step}"
 
-    highlights = [
-        {
-            "title": "Model",
-            "value": "Logistic Regression",
-            "text": "Transparent predictive layer",
-            "color": "#2563eb",
-            "background": "#eff6ff",
-        },
-        {
-            "title": "ROC-AUC",
-            "value": roc_auc_text,
-            "text": "Risk ranking quality",
-            "color": "#7c3aed",
-            "background": "#f3e8ff",
-        },
-        {
-            "title": "Training / Test",
-            "value": f"{train_size} / {test_size}",
-            "text": "Reproducible split",
-            "color": "#b7791f",
-            "background": "#fff8e1",
-        },
-        {
-            "title": "Explanation",
-            "value": "WHY / WHY-NOT",
-            "text": "Argument-based reasoning",
-            "color": "#2e7d32",
-            "background": "#e8f5e9",
-        },
-    ]
-
-    for col, item in zip(highlight_cols, highlights):
         card_html = (
             f"<div style='"
-            f"background-color:{item['background']};"
-            f"border:1px solid {item['color']};"
-            f"border-left:7px solid {item['color']};"
-            f"border-radius:18px;"
-            f"padding:18px;"
-            f"min-height:150px;"
-            f"box-shadow:0 4px 12px rgba(0,0,0,0.06);"
+            f"background: linear-gradient(180deg, #ffffff 0%, {soft_color} 100%);"
+            f"border: 1px solid rgba(15,23,42,0.10);"
+            f"border-top: 7px solid {color};"
+            f"border-radius: 28px;"
+            f"padding: 26px;"
+            f"min-height: 345px;"
+            f"box-shadow: 0 14px 34px rgba(15,23,42,0.13);"
+            f"position: relative;"
+            f"overflow: hidden;"
             f"'>"
-            f"<div style='font-size:13px;font-weight:900;color:{item['color']};margin-bottom:8px;'>"
-            f"{item['title']}"
+            # soft decorative circle
+            f"<div style='"
+            f"position:absolute;"
+            f"top:-52px;"
+            f"right:-52px;"
+            f"width:150px;"
+            f"height:150px;"
+            f"border-radius:50%;"
+            f"background:{color};"
+            f"opacity:0.08;"
+            f"'></div>"
+            # elegant top label, only one number
+            f"<div style='"
+            f"display:flex;"
+            f"align-items:center;"
+            f"justify-content:space-between;"
+            f"margin-bottom:22px;"
+            f"position:relative;"
+            f"z-index:2;"
+            f"'>"
+            f"<div style='"
+            f"display:flex;"
+            f"align-items:center;"
+            f"gap:12px;"
+            f"'>"
+            f"<div style='"
+            f"font-size:32px;"
+            f"font-weight:950;"
+            f"color:{color};"
+            f"line-height:1;"
+            f"'>"
+            f"{step_label}"
             f"</div>"
-            f"<div style='font-size:26px;font-weight:900;color:#111;margin-bottom:8px;'>"
-            f"{item['value']}"
+            f"<div style='"
+            f"width:46px;"
+            f"height:2px;"
+            f"background:{color};"
+            f"border-radius:999px;"
+            f"opacity:0.75;"
+            f"'></div>"
             f"</div>"
-            f"<div style='font-size:14px;color:#444;'>"
-            f"{item['text']}"
+            f"<div style='"
+            f"font-size:12px;"
+            f"font-weight:900;"
+            f"letter-spacing:0.08em;"
+            f"text-transform:uppercase;"
+            f"color:{color};"
+            f"background:white;"
+            f"border:1px solid rgba(15,23,42,0.08);"
+            f"border-radius:999px;"
+            f"padding:7px 11px;"
+            f"box-shadow:0 4px 12px rgba(15,23,42,0.06);"
+            f"'>"
+            f"{subtitle}"
+            f"</div>"
+            f"</div>"
+            f"{visual_html}"
+            f"<div style='"
+            f"font-size:31px;"
+            f"font-weight:950;"
+            f"color:#020617;"
+            f"line-height:1.08;"
+            f"margin-top:20px;"
+            f"margin-bottom:14px;"
+            f"'>"
+            f"{title}"
+            f"</div>"
+            f"<div style='font-size:16px;color:#334155;line-height:1.60;'>"
+            f"{description}"
             f"</div>"
             f"</div>"
         )
 
-        with col:
-            st.markdown(card_html, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(card_html, unsafe_allow_html=True)
 
     # ------------------------------------------------------------
-    # Thesis workflow
+    # Card 1 visual
     # ------------------------------------------------------------
 
-    st.markdown("### Thesis workflow")
-
-    workflow_html = (
-        "<div style='"
-        "background-color:#ffffff;"
-        "border:1px solid #d9e2ec;"
-        "border-radius:20px;"
-        "padding:24px;"
-        "margin-bottom:28px;"
-        "box-shadow:0 5px 16px rgba(0,0,0,0.06);"
-        "'>"
-        "<div style='display:flex;align-items:center;gap:12px;text-align:center;'>"
-        "<div style='flex:1;background-color:#eff6ff;border-radius:16px;padding:16px;'>"
-        "<div style='font-size:24px;font-weight:900;color:#2563eb;'>1</div>"
-        "<div style='font-size:17px;font-weight:900;color:#111;'>Preprocess</div>"
-        "<div style='font-size:13px;color:#555;'>Clean and standardize data</div>"
-        "</div>"
-        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
-        "<div style='flex:1;background-color:#f3e8ff;border-radius:16px;padding:16px;'>"
-        "<div style='font-size:24px;font-weight:900;color:#7c3aed;'>2</div>"
-        "<div style='font-size:17px;font-weight:900;color:#111;'>Predict</div>"
-        "<div style='font-size:13px;color:#555;'>Estimate default risk</div>"
-        "</div>"
-        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
-        "<div style='flex:1;background-color:#fff8e1;border-radius:16px;padding:16px;'>"
-        "<div style='font-size:24px;font-weight:900;color:#b7791f;'>3</div>"
-        "<div style='font-size:17px;font-weight:900;color:#111;'>Argue</div>"
-        "<div style='font-size:13px;color:#555;'>Build financial arguments</div>"
-        "</div>"
-        "<div style='font-size:28px;font-weight:900;color:#94a3b8;'>→</div>"
-        "<div style='flex:1;background-color:#e8f5e9;border-radius:16px;padding:16px;'>"
-        "<div style='font-size:24px;font-weight:900;color:#2e7d32;'>4</div>"
-        "<div style='font-size:17px;font-weight:900;color:#111;'>Explain</div>"
-        "<div style='font-size:13px;color:#555;'>WHY / WHY-NOT and audit</div>"
+    visual_preprocessing = (
+        "<div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:18px;'>"
+        "<div style='display:flex;align-items:end;gap:8px;height:74px;'>"
+        "<div style='width:18px;height:28px;background:#bfdbfe;border-radius:6px;'></div>"
+        "<div style='width:18px;height:42px;background:#93c5fd;border-radius:6px;'></div>"
+        "<div style='width:18px;height:56px;background:#60a5fa;border-radius:6px;'></div>"
+        "<div style='width:18px;height:68px;background:#2563eb;border-radius:6px;'></div>"
+        "<div style='width:18px;height:51px;background:#60a5fa;border-radius:6px;'></div>"
+        "<div style='width:18px;height:34px;background:#93c5fd;border-radius:6px;'></div>"
+        "<div style='margin-left:auto;text-align:right;'>"
+        "<div style='font-size:13px;font-weight:900;color:#1e40af;'>Clean</div>"
+        "<div style='font-size:13px;font-weight:900;color:#1e40af;'>Standardized</div>"
         "</div>"
         "</div>"
         "</div>"
     )
 
-    st.markdown(workflow_html, unsafe_allow_html=True)
-
     # ------------------------------------------------------------
-    # Navigation cards
+    # Card 2 visual (more mathematical and general)
     # ------------------------------------------------------------
 
-    st.markdown("### Explore the system")
+    visual_model = (
+        "<div style='"
+        "background:#faf5ff;"
+        "border:1px solid #e9d5ff;"
+        "border-radius:20px;"
+        "padding:16px;"
+        "'>"
+        "<svg width='100%' height='92' viewBox='0 0 320 92' xmlns='http://www.w3.org/2000/svg'>"
+        "<rect x='8' y='8' width='304' height='76' rx='18' fill='white' opacity='0.88'/>"
+        "<path d='M35 68 C58 68, 66 60, 82 46 C98 31, 112 20, 134 20 C157 20, 172 30, 191 46 C210 61, 227 67, 253 67 C272 67, 286 59, 296 52' "
+        "fill='none' stroke='#7c3aed' stroke-width='5' stroke-linecap='round'/>"
+        "<line x1='42' y1='72' x2='42' y2='28' stroke='#c4b5fd' stroke-width='2'/>"
+        "<line x1='42' y1='72' x2='292' y2='72' stroke='#c4b5fd' stroke-width='2'/>"
+        "<text x='62' y='34' font-size='16' font-weight='900' fill='#6d28d9'>Σ</text>"
+        "<text x='92' y='34' font-size='15' font-weight='900' fill='#6d28d9'>f(x)</text>"
+        "<text x='132' y='34' font-size='15' font-weight='900' fill='#6d28d9'>β</text>"
+        "<text x='156' y='34' font-size='15' font-weight='900' fill='#6d28d9'>π</text>"
+        "<text x='182' y='34' font-size='15' font-weight='900' fill='#6d28d9'>∫</text>"
+        "<circle cx='134' cy='20' r='5.5' fill='#7c3aed'/>"
+        "<circle cx='191' cy='46' r='5.5' fill='#a78bfa'/>"
+        "<text x='160' y='58' text-anchor='middle' font-size='18' font-weight='900' fill='#0f172a'>"
+        "Mathematical Model"
+        "</text>"
+        "</svg>"
+        "</div>"
+    )
 
-    col1, col2, col3 = st.columns(3)
+    # ------------------------------------------------------------
+    # Card 3 visual
+    # ------------------------------------------------------------
+
+    visual_applicant = (
+        "<div style='background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:18px;'>"
+        "<div style='font-size:13px;font-weight:950;color:#15803d;margin-bottom:10px;'>Argument Strength Balance</div>"
+        "<div style='height:12px;background:#dcfce7;border-radius:999px;margin-bottom:10px;'>"
+        "<div style='height:12px;width:78%;background:#16a34a;border-radius:999px;'></div>"
+        "</div>"
+        "<div style='display:flex;justify-content:space-between;font-size:12px;font-weight:900;color:#166534;'>"
+        "<span>WHY</span>"
+        "<span>WHY-NOT</span>"
+        "<span>AUDIT</span>"
+        "</div>"
+        "</div>"
+    )
 
     with col1:
-        st.markdown(
-            (
-                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
-                "border-radius:18px;padding:22px;min-height:185px;"
-                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
-                "<div style='font-size:26px;font-weight:900;color:#2563eb;margin-bottom:8px;'>"
-                "1. Preprocessing"
-                "</div>"
-                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
-                "See how the dataset was split, cleaned, winsorized, and standardized "
-                "before model training."
-                "</div>"
-                "</div>"
+        render_premium_card(
+            step="1",
+            title="Preprocessing",
+            subtitle="Data preparation",
+            description=(
+                "Review how the credit dataset is split, cleaned, winsorized, "
+                "imputed, and standardized before training."
             ),
-            unsafe_allow_html=True,
+            color="#2563eb",
+            soft_color="#eff6ff",
+            visual_html=visual_preprocessing,
         )
 
         if st.button("Open Preprocessing", width="stretch"):
             go_to_section("Preprocessing")
 
     with col2:
-        st.markdown(
-            (
-                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
-                "border-radius:18px;padding:22px;min-height:185px;"
-                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
-                "<div style='font-size:26px;font-weight:900;color:#7c3aed;margin-bottom:8px;'>"
-                "2. Logistic Regression"
-                "</div>"
-                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
-                "Inspect the fitted model, coefficients, validation, and how model weights "
-                "connect to argument strength."
-                "</div>"
-                "</div>"
+        render_premium_card(
+            step="2",
+            title="Logistic Regression",
+            subtitle="Predictive layer",
+            description=(
+                "Inspect the fitted coefficients, validation metrics, ROC curve, "
+                "and the link between coefficients and argument strength."
             ),
-            unsafe_allow_html=True,
+            color="#7c3aed",
+            soft_color="#f5f3ff",
+            visual_html=visual_model,
         )
 
         if st.button("Open Logistic Regression", width="stretch"):
             go_to_section("Logistic Regression")
 
     with col3:
-        st.markdown(
-            (
-                "<div style='background-color:#f8fafc;border:1px solid #d9e2ec;"
-                "border-radius:18px;padding:22px;min-height:185px;"
-                "box-shadow:0 4px 12px rgba(0,0,0,0.06);'>"
-                "<div style='font-size:26px;font-weight:900;color:#2e7d32;margin-bottom:8px;'>"
-                "3. Applicant Evaluation"
-                "</div>"
-                "<div style='font-size:16px;color:#444;line-height:1.5;'>"
-                "Enter an applicant profile and generate prediction, argumentation, "
-                "counterfactuals, and audit summary."
-                "</div>"
-                "</div>"
+        render_premium_card(
+            step="3",
+            title="Applicant Evaluation",
+            subtitle="Explanation layer",
+            description=(
+                "Generate a full applicant report with prediction, arguments, "
+                "WHY / WHY-NOT explanations, counterfactuals, and audit trail."
             ),
-            unsafe_allow_html=True,
+            color="#16a34a",
+            soft_color="#ecfdf5",
+            visual_html=visual_applicant,
         )
 
         if st.button("Open Applicant Profile", width="stretch"):
             go_to_section("Applicant Profile")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown(
+        (
+            "<div style='"
+            "background:#ffffff;"
+            "border:1px solid #e2e8f0;"
+            "border-radius:24px;"
+            "padding:22px;"
+            "box-shadow:0 10px 26px rgba(15,23,42,0.08);"
+            "text-align:center;"
+            "'>"
+            "<span style='font-size:16px;font-weight:950;color:#0f172a;'>"
+            "Data Preparation"
+            "</span>"
+            "<span style='font-size:18px;font-weight:950;color:#94a3b8;margin:0 16px;'>→</span>"
+            "<span style='font-size:16px;font-weight:950;color:#0f172a;'>"
+            "Default Prediction"
+            "</span>"
+            "<span style='font-size:18px;font-weight:950;color:#94a3b8;margin:0 16px;'>→</span>"
+            "<span style='font-size:16px;font-weight:950;color:#0f172a;'>"
+            "Argument-Based Explanation"
+            "</span>"
+            "<span style='font-size:18px;font-weight:950;color:#94a3b8;margin:0 16px;'>→</span>"
+            "<span style='font-size:16px;font-weight:950;color:#0f172a;'>"
+            "Audit Trail"
+            "</span>"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def render_applicant_profile_page():
